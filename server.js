@@ -1,10 +1,11 @@
-// server.js - Complete ASICS Auto-Scraper
+// server.js - Complete ASICS Auto-Scraper with Real Scraping
+const puppeteer = require('puppeteer-core');
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 const { Pool } = require('pg');
 
-class CompleteASICSScraper {
+class RealASICSScraper {
     constructor() {
         this.app = express();
         this.setupDatabase();
@@ -38,12 +39,12 @@ class CompleteASICSScraper {
         // Status API
         this.app.get('/api/status', (req, res) => {
             res.json({
-                status: '🚀 ASICS Auto-Scraper Running',
+                status: '🚀 ASICS Real Auto-Scraper Running',
                 pages: this.pageList.length,
                 isScrapingNow: this.isRunning,
                 lastScrape: this.lastScrapeTime,
                 uptime: Math.floor(process.uptime()),
-                version: '2.0.0'
+                version: '3.0.0 - REAL SCRAPING'
             });
         });
 
@@ -67,7 +68,7 @@ class CompleteASICSScraper {
             this.scrapeAllPages();
             res.json({ 
                 success: true, 
-                message: `Scraping started for ${this.pageList.length} pages`,
+                message: `Real scraping started for ${this.pageList.length} pages`,
                 pages: this.pageList.length 
             });
         });
@@ -193,33 +194,53 @@ class CompleteASICSScraper {
             }
         });
 
-        // Test scraping without puppeteer (simulation)
+        // Test single page scraping
         this.app.post('/api/test-scrape', async (req, res) => {
             const { url } = req.body;
             
-            // Simulate scraping data for testing
-            const mockInventory = this.generateMockInventory(url);
-            
-            if (mockInventory.length > 0) {
-                await this.saveInventoryToDatabase(mockInventory);
+            if (!url || !url.includes('b2b.asics.com/products/')) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Please provide a valid ASICS B2B product URL' 
+                });
             }
             
-            res.json({
-                success: true,
-                message: `Mock scraped ${mockInventory.length} records from ${url}`,
-                data: mockInventory
-            });
+            try {
+                console.log(`🧪 Testing real scrape of: ${url}`);
+                const result = await this.scrapeSinglePage(url);
+                
+                if (result.success && result.inventory && result.inventory.length > 0) {
+                    await this.saveInventoryToDatabase(result.inventory);
+                    res.json({
+                        success: true,
+                        message: `Successfully scraped ${result.inventory.length} records from ${url}`,
+                        data: result
+                    });
+                } else {
+                    res.json({
+                        success: false,
+                        message: result.error || 'No inventory data found',
+                        data: result
+                    });
+                }
+            } catch (error) {
+                console.error('Test scrape error:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Scraping failed: ' + error.message
+                });
+            }
         });
     }
 
     async init() {
-        console.log('🚀 Initializing Complete ASICS Auto-Scraper...');
+        console.log('🚀 Initializing Real ASICS Auto-Scraper...');
         
         await this.setupDatabaseTables();
         await this.loadPageList();
         this.startScheduler();
         
-        console.log(`✅ Scraper initialized with ${this.pageList.length} pages`);
+        console.log(`✅ Real scraper initialized with ${this.pageList.length} pages`);
     }
 
     async setupDatabaseTables() {
@@ -286,13 +307,23 @@ class CompleteASICSScraper {
     }
 
     startScheduler() {
-        console.log('🕐 Starting scheduler - scraping every 30 minutes');
+        console.log('🕐 Starting real scraping scheduler - every 30 minutes');
         
-        // For now, just log - we'll add real scraping later
+        // Run first scrape after 2 minutes if we have pages
+        setTimeout(() => {
+            if (this.pageList.length > 0) {
+                console.log('🚀 Running initial real scrape...');
+                this.scrapeAllPages();
+            } else {
+                console.log('📝 No pages to scrape. Add some URLs first.');
+            }
+        }, 120000);
+        
+        // Then every 30 minutes
         cron.schedule('*/30 * * * *', () => {
             if (this.pageList.length > 0) {
-                console.log('⏰ Scheduled scrape would trigger now (disabled until Puppeteer added)');
-                // this.scrapeAllPages(); // Uncomment when ready
+                console.log('⏰ Scheduled real scrape triggered');
+                this.scrapeAllPages();
             }
         });
     }
@@ -306,19 +337,66 @@ class CompleteASICSScraper {
         this.isRunning = true;
         const startTime = Date.now();
         
-        console.log(`🚀 Starting mock scrape of ${this.pageList.length} pages`);
+        console.log(`🚀 Starting real scrape of ${this.pageList.length} pages`);
 
-        // For now, simulate scraping without Puppeteer
+        let browser;
         const results = [];
-        
-        for (let url of this.pageList) {
-            const mockData = this.generateMockInventory(url);
-            results.push({
-                url,
-                success: true,
-                inventory: mockData,
-                recordCount: mockData.length
+
+        try {
+            browser = await puppeteer.launch({
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-extensions',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding'
+                ]
             });
+
+            console.log('🌐 Browser launched successfully');
+
+            // Process pages in small batches to avoid memory issues
+            const batchSize = 2;
+            for (let i = 0; i < this.pageList.length; i += batchSize) {
+                const batch = this.pageList.slice(i, i + batchSize);
+                console.log(`📦 Processing batch ${Math.floor(i/batchSize) + 1}: ${batch.length} pages`);
+                
+                const batchPromises = batch.map(url => this.scrapePage(browser, url));
+                const batchResults = await Promise.allSettled(batchPromises);
+                
+                batchResults.forEach((result, index) => {
+                    if (result.status === 'fulfilled') {
+                        results.push(result.value);
+                    } else {
+                        console.error(`❌ Batch error for ${batch[index]}:`, result.reason.message);
+                        results.push({
+                            url: batch[index],
+                            success: false,
+                            error: result.reason.message
+                        });
+                    }
+                });
+                
+                if (i + batchSize < this.pageList.length) {
+                    console.log('⏸️ Waiting between batches...');
+                    await this.delay(5000);
+                }
+            }
+
+        } catch (error) {
+            console.error('❌ Critical scraping error:', error);
+        } finally {
+            if (browser) {
+                await browser.close();
+                console.log('🔒 Browser closed');
+            }
         }
 
         await this.processResults(results);
@@ -326,43 +404,272 @@ class CompleteASICSScraper {
         const duration = Math.round((Date.now() - startTime) / 1000);
         this.lastScrapeTime = new Date().toISOString();
         
-        console.log(`✅ Mock scraping completed in ${duration} seconds`);
+        console.log(`✅ Real scraping completed in ${duration} seconds`);
         this.isRunning = false;
     }
 
-    generateMockInventory(url) {
-        // Extract style ID from URL
-        const styleId = url.split('/').pop()?.split('?')[0] || 'TEST123';
+    async scrapePage(browser, url) {
+        const page = await browser.newPage();
         
-        const mockInventory = [];
-        const colors = [
-            { code: '001', name: 'BLACK/WHITE' },
-            { code: '002', name: 'WHITE/BLACK' },
-            { code: '100', name: 'NAVY/SILVER' }
-        ];
-        
-        const sizes = ['7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12'];
-        
-        colors.forEach(color => {
-            sizes.forEach(size => {
-                const quantity = Math.floor(Math.random() * 20); // Random 0-19
-                mockInventory.push({
-                    productName: `Test Product ${styleId}`,
-                    styleId: styleId,
-                    colorCode: color.code,
-                    colorName: color.name,
-                    sizeUS: size,
-                    quantity: quantity,
-                    rawQuantity: quantity.toString(),
-                    extractedAt: new Date().toISOString(),
-                    url: url,
-                    sourceUrl: url,
-                    scrapedAt: new Date().toISOString()
-                });
+        try {
+            console.log(`🔍 Real scraping: ${url}`);
+            
+            await page.setViewport({ width: 1280, height: 720 });
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            await page.goto(url, { 
+                waitUntil: 'networkidle0', 
+                timeout: 45000 
             });
-        });
-        
-        return mockInventory;
+
+            // Wait for the grid to load
+            await page.waitForSelector('.grid', { timeout: 15000 });
+            
+            // Additional wait for dynamic content
+            await this.delay(3000);
+
+            // Extract inventory using your proven logic
+            const inventory = await page.evaluate(() => {
+                class ASICSInventoryExtractor {
+                    extractInventoryData() {
+                        const inventory = [];
+                        const productInfo = this.getProductInfo();
+                        const colors = this.findColors();
+                        const sizes = this.findSizes();
+                        const quantityMatrix = this.findQuantityMatrix();
+                        
+                        console.log('🏷️ Product:', productInfo);
+                        console.log('🎨 Colors found:', colors.length);
+                        console.log('📏 Sizes found:', sizes.length);
+                        console.log('📊 Quantity matrix rows:', quantityMatrix.length);
+                        
+                        colors.forEach((color, colorIndex) => {
+                            const colorQuantities = quantityMatrix[colorIndex] || [];
+                            sizes.forEach((size, sizeIndex) => {
+                                const quantity = colorQuantities[sizeIndex] || '0';
+                                inventory.push({
+                                    productName: productInfo.productName,
+                                    styleId: productInfo.styleId,
+                                    colorCode: color.code,
+                                    colorName: color.name,
+                                    sizeUS: size,
+                                    quantity: this.parseQuantity(quantity),
+                                    rawQuantity: quantity,
+                                    extractedAt: new Date().toISOString(),
+                                    url: window.location.href
+                                });
+                            });
+                        });
+                        
+                        return inventory;
+                    }
+
+                    getProductInfo() {
+                        const productName = document.querySelector('h1')?.textContent?.trim() || 'Unknown Product';
+                        const styleId = window.location.pathname.split('/').pop()?.split('?')[0] || 'Unknown';
+                        return { productName, styleId };
+                    }
+
+                    findColors() {
+                        const colors = [];
+                        const colorElements = document.querySelectorAll('li div.flex.items-center.gap-2');
+                        
+                        colorElements.forEach(el => {
+                            const spans = el.querySelectorAll('span');
+                            if (spans.length >= 3) {
+                                const code = spans[0].textContent.trim();
+                                const separator = spans[1].textContent.trim();
+                                const name = spans[2].textContent.trim();
+                                if (code.match(/^\d{3}$/) && separator === '-') {
+                                    colors.push({ code, name });
+                                }
+                            }
+                        });
+                        
+                        // Fallback method if no colors found
+                        if (colors.length === 0) {
+                            const allElements = document.querySelectorAll('*');
+                            const seenCodes = new Set();
+                            
+                            allElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                const colorMatch = text.match(/^(\d{3})\s*-\s*([A-Z\/\s]+)$/);
+                                if (colorMatch && !seenCodes.has(colorMatch[1])) {
+                                    seenCodes.add(colorMatch[1]);
+                                    colors.push({
+                                        code: colorMatch[1],
+                                        name: colorMatch[2].trim()
+                                    });
+                                }
+                            });
+                        }
+                        
+                        return colors;
+                    }
+
+                    findSizes() {
+                        const sizes = [];
+                        const sizeElements = document.querySelectorAll('.bg-primary.text-white');
+                        
+                        sizeElements.forEach(el => {
+                            const sizeText = el.textContent.trim();
+                            if (sizeText.match(/^\d+\.?\d*$/)) {
+                                sizes.push(sizeText);
+                            }
+                        });
+                        
+                        return sizes.length > 0 ? sizes : 
+                            ['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '14', '15'];
+                    }
+
+                    findQuantityMatrix() {
+                        const quantityMatrix = [];
+                        const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
+                        
+                        console.log('Found quantity row elements:', quantityRows.length);
+                        
+                        quantityRows.forEach((row, index) => {
+                            const quantities = [];
+                            const cells = row.querySelectorAll('.flex.items-center.justify-center span');
+                            console.log(`Row ${index} has ${cells.length} cells`);
+                            
+                            cells.forEach(cell => {
+                                const text = cell.textContent.trim();
+                                if (text.match(/^\d+\+?$/) || text === '0' || text === '0+') {
+                                    quantities.push(text);
+                                }
+                            });
+                            
+                            console.log(`Row ${index} quantities:`, quantities);
+                            
+                            if (quantities.length > 0) {
+                                quantityMatrix.push(quantities);
+                            }
+                        });
+                        
+                        // If no matrix found, try alternative approach
+                        if (quantityMatrix.length === 0) {
+                            console.log('No quantity matrix found, trying alternative approach...');
+                            
+                            const potentialQuantityElements = document.querySelectorAll('span, div');
+                            const quantityPattern = /^(\d+\+?|0\+?)$/;
+                            const foundQuantities = [];
+                            
+                            potentialQuantityElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                if (quantityPattern.test(text)) {
+                                    const rect = el.getBoundingClientRect();
+                                    foundQuantities.push({
+                                        text,
+                                        element: el,
+                                        x: rect.left,
+                                        y: rect.top
+                                    });
+                                }
+                            });
+                            
+                            console.log('Found potential quantities:', foundQuantities.map(q => q.text));
+                            
+                            // Group quantities by similar Y coordinates (rows)
+                            foundQuantities.sort((a, b) => a.y - b.y);
+                            
+                            let currentRow = [];
+                            let lastY = -1;
+                            const tolerance = 10; // pixels
+                            
+                            foundQuantities.forEach(q => {
+                                if (lastY === -1 || Math.abs(q.y - lastY) < tolerance) {
+                                    currentRow.push(q.text);
+                                    lastY = q.y;
+                                } else {
+                                    if (currentRow.length > 5) { // Minimum reasonable number of sizes
+                                        quantityMatrix.push([...currentRow]);
+                                    }
+                                    currentRow = [q.text];
+                                    lastY = q.y;
+                                }
+                            });
+                            
+                            // Add the last row
+                            if (currentRow.length > 5) {
+                                quantityMatrix.push(currentRow);
+                            }
+                        }
+                        
+                        console.log('Final quantity matrix:', quantityMatrix);
+                        return quantityMatrix;
+                    }
+
+                    parseQuantity(quantityText) {
+                        if (!quantityText || quantityText === '-' || quantityText === '') return 0;
+                        if (quantityText.includes('+')) {
+                            const num = parseInt(quantityText.replace('+', ''));
+                            return isNaN(num) ? 0 : num;
+                        }
+                        const num = parseInt(quantityText);
+                        return isNaN(num) ? 0 : num;
+                    }
+                }
+
+                const extractor = new ASICSInventoryExtractor();
+                return extractor.extractInventoryData();
+            });
+
+            console.log(`✅ ${url}: ${inventory.length} real records extracted`);
+            
+            return {
+                url,
+                success: true,
+                inventory,
+                recordCount: inventory.length,
+                timestamp: new Date().toISOString()
+            };
+
+        } catch (error) {
+            console.error(`❌ Error scraping ${url}:`, error.message);
+            return {
+                url,
+                success: false,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            };
+        } finally {
+            await page.close();
+        }
+    }
+
+    async scrapeSinglePage(url) {
+        let browser;
+        try {
+            browser = await puppeteer.launch({
+                headless: 'new',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-extensions'
+                ]
+            });
+
+            const result = await this.scrapePage(browser, url);
+            return result;
+
+        } catch (error) {
+            console.error('Single page scrape error:', error);
+            return {
+                url,
+                success: false,
+                error: error.message
+            };
+        } finally {
+            if (browser) {
+                await browser.close();
+            }
+        }
     }
 
     async processResults(results) {
@@ -372,11 +679,15 @@ class CompleteASICSScraper {
         
         results.forEach(result => {
             if (result.success && result.inventory) {
-                allInventory.push(...result.inventory);
+                allInventory.push(...result.inventory.map(item => ({
+                    ...item,
+                    sourceUrl: result.url,
+                    scrapedAt: result.timestamp
+                })));
             }
         });
 
-        console.log(`📊 Processing results: ${allInventory.length} total records`);
+        console.log(`📊 Processing real results: ${allInventory.length} total records`);
         console.log(`✅ Successful pages: ${successCount}`);
         console.log(`❌ Failed pages: ${errorCount}`);
 
@@ -393,7 +704,7 @@ class CompleteASICSScraper {
         try {
             await client.query('BEGIN');
             
-            console.log('📤 Saving inventory to database...');
+            console.log('📤 Saving real inventory to database...');
             
             for (let item of inventory) {
                 await client.query(`
@@ -413,7 +724,7 @@ class CompleteASICSScraper {
             }
             
             await client.query('COMMIT');
-            console.log('✅ Inventory saved to database');
+            console.log('✅ Real inventory saved to database');
             
         } catch (error) {
             await client.query('ROLLBACK');
@@ -457,7 +768,7 @@ class CompleteASICSScraper {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>ASICS Complete Auto-Scraper</title>
+            <title>ASICS Real Auto-Scraper</title>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
@@ -535,7 +846,7 @@ class CompleteASICSScraper {
                 .loading { opacity: 0.6; }
                 .export-btn { background: #28a745; }
                 .export-btn:hover { background: #218838; }
-                .notice { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 6px; margin: 15px 0; }
+                .notice { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 6px; margin: 15px 0; }
                 @media (max-width: 768px) {
                     .cards { grid-template-columns: 1fr; }
                     .input-group { flex-direction: column; }
@@ -545,20 +856,20 @@ class CompleteASICSScraper {
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🚀 ASICS Complete Auto-Scraper</h1>
-                    <p>Full inventory monitoring system with database integration</p>
+                    <h1>🚀 ASICS Real Auto-Scraper</h1>
+                    <p>Live inventory scraping from ASICS B2B portal</p>
                 </div>
                 
                 <div class="notice">
-                    <strong>🔧 Development Mode:</strong> Currently using mock data for testing. Real Puppeteer scraping will be added next!
+                    <strong>🎉 REAL SCRAPING ACTIVE:</strong> Now using Puppeteer to extract actual inventory data from ASICS B2B pages!
                 </div>
                 
                 <div class="cards">
                     <div class="card">
                         <h3>🎛️ Controls</h3>
-                        <button class="btn" id="scrapeBtn" onclick="scrapeNow()">Mock Scrape All Pages</button>
-                        <button class="btn btn-test" onclick="testScrape()">Test Single Page</button>
-                        <button class="btn" onclick="refreshAll()">Refresh Status</button>
+                        <button class="btn" id="scrapeBtn" onclick="scrapeNow()">🚀 Scrape All Pages</button>
+                        <button class="btn btn-test" onclick="testScrape()">🧪 Test Single Page</button>
+                        <button class="btn" onclick="refreshAll()">🔄 Refresh Status</button>
                         <button class="btn export-btn" onclick="exportCSV()">📥 Export CSV</button>
                         <div id="status-message" class="status" style="display: none;"></div>
                     </div>
@@ -571,7 +882,7 @@ class CompleteASICSScraper {
                     <div class="card">
                         <h3>📋 Add New Page</h3>
                         <div class="input-group">
-                            <input type="text" id="newUrl" placeholder="https://b2b.asics.com/products/1011B956" />
+                            <input type="text" id="newUrl" placeholder="https://b2b.asics.com/products/1013A160" />
                             <button class="btn btn-success" onclick="addPage()">Add Page</button>
                         </div>
                         <div id="add-status" style="min-height: 20px;"></div>
@@ -622,7 +933,7 @@ class CompleteASICSScraper {
                             <div class="stats-grid">
                                 <div class="stat-box">
                                     <div class="stat-number">\${status.isScrapingNow ? '🟡' : '🟢'}</div>
-                                    <div class="stat-label">\${status.isScrapingNow ? 'Running' : 'Ready'}</div>
+                                    <div class="stat-label">\${status.isScrapingNow ? 'Scraping' : 'Ready'}</div>
                                 </div>
                                 <div class="stat-box">
                                     <div class="stat-number">\${status.pages}</div>
@@ -634,6 +945,7 @@ class CompleteASICSScraper {
                                 </div>
                             </div>
                             <p style="margin-top: 15px; color: #666; font-size: 0.9em;">
+                                <strong>Version:</strong> \${status.version}<br>
                                 <strong>Last Scrape:</strong> \${status.lastScrape ? new Date(status.lastScrape).toLocaleString() : 'Never'}
                             </p>
                         \`;
@@ -644,7 +956,7 @@ class CompleteASICSScraper {
                             btn.textContent = '⏳ Scraping...';
                             btn.disabled = true;
                         } else {
-                            btn.textContent = 'Mock Scrape All Pages';
+                            btn.textContent = '🚀 Scrape All Pages';
                             btn.disabled = false;
                         }
                         
@@ -671,6 +983,7 @@ class CompleteASICSScraper {
                         
                         if (result.success) {
                             setTimeout(refreshAll, 2000);
+                            setTimeout(refreshAll, 15000); // Check again in 15s
                         }
                         
                     } catch (error) {
@@ -680,13 +993,23 @@ class CompleteASICSScraper {
                     } finally {
                         setTimeout(() => {
                             btn.disabled = false;
-                            btn.textContent = 'Mock Scrape All Pages';
+                            btn.textContent = '🚀 Scrape All Pages';
                         }, 3000);
                     }
                 }
                 
                 async function testScrape() {
-                    const url = document.getElementById('newUrl').value.trim() || 'https://b2b.asics.com/products/TEST123';
+                    const url = document.getElementById('newUrl').value.trim();
+                    
+                    if (!url || !url.includes('b2b.asics.com/products/')) {
+                        alert('Please enter a valid ASICS B2B product URL');
+                        return;
+                    }
+                    
+                    const statusDiv = document.getElementById('status-message');
+                    statusDiv.style.display = 'block';
+                    statusDiv.className = 'status info';
+                    statusDiv.textContent = 'Testing real scrape... this may take 30-60 seconds';
                     
                     try {
                         const response = await fetch('/api/test-scrape', {
@@ -697,14 +1020,16 @@ class CompleteASICSScraper {
                         
                         const result = await response.json();
                         
-                        const statusDiv = document.getElementById('status-message');
-                        statusDiv.style.display = 'block';
-                        statusDiv.className = 'status success';
+                        statusDiv.className = \`status \${result.success ? 'success' : 'error'}\`;
                         statusDiv.textContent = result.message;
                         
-                        setTimeout(refreshAll, 1000);
+                        if (result.success) {
+                            setTimeout(refreshAll, 1000);
+                        }
                         
                     } catch (error) {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = 'Test scrape failed: ' + error.message;
                         console.error('Test scrape error:', error);
                     }
                 }
@@ -791,7 +1116,7 @@ class CompleteASICSScraper {
                             <div class="page-item">
                                 <div class="page-url">\${url.replace('https://b2b.asics.com/products/', '')}</div>
                                 <div>
-                                    <button class="btn btn-test" onclick="testScrape(); document.getElementById('newUrl').value='\${url}'" style="padding: 4px 8px; font-size: 11px; margin-right: 5px;">Test</button>
+                                    <button class="btn btn-test" onclick="testSingleUrl('\${url}')" style="padding: 4px 8px; font-size: 11px; margin-right: 5px;">Test</button>
                                     <button class="btn btn-danger" onclick="removePage('\${url}')" style="padding: 4px 8px; font-size: 11px;">Remove</button>
                                 </div>
                             </div>
@@ -801,6 +1126,11 @@ class CompleteASICSScraper {
                         console.error('Pages error:', error);
                         document.getElementById('page-list').innerHTML = '<p class="error">Error loading pages</p>';
                     }
+                }
+                
+                async function testSingleUrl(url) {
+                    document.getElementById('newUrl').value = url;
+                    await testScrape();
                 }
                 
                 async function loadLogs() {
@@ -818,7 +1148,7 @@ class CompleteASICSScraper {
                         logsDiv.innerHTML = data.logs.map(log => \`
                             <div class="log-item">
                                 <strong>\${new Date(log.created_at).toLocaleString()}</strong><br>
-                                📊 \${log.success_count}/\${log.total_pages} pages • 
+                                📊 \${log.success_count}/\${log.total_pages} pages successful • 
                                 📦 \${log.record_count} records • 
                                 ❌ \${log.error_count} errors
                             </div>
@@ -895,14 +1225,14 @@ class CompleteASICSScraper {
     start() {
         const port = process.env.PORT || 3000;
         this.app.listen(port, '0.0.0.0', async () => {
-            console.log(`🚀 Complete ASICS Auto-Scraper running on port ${port}`);
+            console.log(`🚀 Real ASICS Auto-Scraper running on port ${port}`);
             console.log(`📊 Dashboard: https://asics-auto-scraper.onrender.com`);
         });
     }
 }
 
-// Start the complete scraper
-const scraper = new CompleteASICSScraper();
+// Start the real scraper
+const scraper = new RealASICSScraper();
 scraper.start();
 
 process.on('SIGTERM', () => {
