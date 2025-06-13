@@ -464,8 +464,9 @@ class ASICSWeeklyBatchScraper {
         const results = [];
         
         try {
-            // Use authenticated browser for B2B portal access
-            browser = await this.getBrowserWithAuth();
+            // Use the FIXED authenticated browser
+            console.log('🔧 Using FIXED authentication method...');
+            browser = await this.getAuthenticatedBrowser(); // Use new method name
             
             for (let i = 0; i < urls.length && this.isRunning; i++) {
                 const url = urls[i];
@@ -502,27 +503,16 @@ class ASICSWeeklyBatchScraper {
         } catch (error) {
             console.error('❌ Batch authentication error:', error);
             
-            // If authentication fails, try to continue with remaining URLs using basic browser
-            console.log('🔄 Falling back to basic browser for remaining URLs...');
-            
-            try {
-                if (browser) await browser.close();
-                browser = await this.getBrowser();
-                
-                // Continue with basic scraping (will likely fail but we try)
-                for (let i = results.length; i < urls.length && this.isRunning; i++) {
-                    const url = urls[i];
-                    results.push({
-                        url: url,
-                        success: false,
-                        error: 'Authentication failed - page requires login',
-                        timestamp: new Date().toISOString(),
-                        batchId: batchId
-                    });
-                    this.scrapingProgress.errors++;
-                }
-            } catch (fallbackError) {
-                console.error('❌ Fallback browser also failed:', fallbackError.message);
+            // Add all remaining URLs as failed
+            for (let i = results.length; i < urls.length; i++) {
+                results.push({
+                    url: urls[i],
+                    success: false,
+                    error: 'Authentication failed - ' + error.message,
+                    timestamp: new Date().toISOString(),
+                    batchId: batchId
+                });
+                this.scrapingProgress.errors++;
             }
         } finally {
             if (browser) {
@@ -540,6 +530,257 @@ class ASICSWeeklyBatchScraper {
         }
         
         return results;
+    }
+
+    // NEW METHOD: Fixed authentication that handles country selection
+    async getAuthenticatedBrowser() {
+        console.log('🚀 [FIXED] Launching browser with ASICS B2B authentication...');
+        
+        const browser = await puppeteer.launch({
+            executablePath: await chromium.executablePath(),
+            args: [
+                ...chromium.args,
+                '--disable-dev-shm-usage',
+                '--memory-pressure-off',
+                '--max-old-space-size=128'
+            ],
+            headless: chromium.headless,
+            defaultViewport: { width: 1024, height: 768 }
+        });
+        
+        const page = await browser.newPage();
+        
+        try {
+            console.log('🔐 [FIXED] Navigating to ASICS B2B authentication...');
+            
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            // Navigate to authentication page
+            await page.goto('https://b2b.asics.com/authentication/login', { 
+                waitUntil: 'networkidle0', 
+                timeout: 60000 
+            });
+            
+            console.log('📋 [FIXED] Current URL:', page.url());
+            console.log('📋 [FIXED] Page title:', await page.title());
+            
+            // Check credentials
+            if (!process.env.ASICS_USERNAME || !process.env.ASICS_PASSWORD) {
+                throw new Error('ASICS credentials not found. Set ASICS_USERNAME and ASICS_PASSWORD environment variables.');
+            }
+            
+            await this.delay(3000);
+            
+            // Check if we see country selection
+            const pageContent = await page.evaluate(() => {
+                return {
+                    title: document.title,
+                    url: window.location.href,
+                    bodyText: document.body.innerText.substring(0, 200),
+                    hasCountrySelection: document.body.innerText.includes('Please Select The Region'),
+                    hasLoginForm: !!(
+                        document.querySelector('input[type="email"]') ||
+                        document.querySelector('input[type="password"]')
+                    )
+                };
+            });
+            
+            console.log('📊 [FIXED] Page content check:', pageContent);
+            
+            if (pageContent.hasCountrySelection && !pageContent.hasLoginForm) {
+                console.log('🌍 [FIXED] Country selection detected, clicking United States...');
+                
+                // Click United States button
+                const countrySelected = await page.evaluate(() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const usButton = buttons.find(btn => 
+                        btn.textContent.trim().includes('United States')
+                    );
+                    
+                    if (usButton) {
+                        console.log('Clicking US button:', usButton.textContent);
+                        usButton.click();
+                        return true;
+                    }
+                    return false;
+                });
+                
+                if (!countrySelected) {
+                    throw new Error('Could not find United States button on country selection page');
+                }
+                
+                console.log('⏳ [FIXED] Waiting for login form after country selection...');
+                await this.delay(5000);
+                
+                // Wait for login form to appear
+                try {
+                    await page.waitForSelector('input[type="email"], input[type="password"], input[name*="email"]', { 
+                        timeout: 15000 
+                    });
+                    console.log('✅ [FIXED] Login form appeared');
+                } catch (e) {
+                    console.log('⚠️ [FIXED] Login form wait timeout, checking manually...');
+                }
+            }
+            
+            // Check for login form
+            const loginFormExists = await page.evaluate(() => {
+                const hasEmailField = !!(
+                    document.querySelector('input[type="email"]') ||
+                    document.querySelector('input[name*="email"]') ||
+                    document.querySelector('input[name*="user"]')
+                );
+                const hasPasswordField = !!document.querySelector('input[type="password"]');
+                
+                return { hasEmailField, hasPasswordField, hasBoth: hasEmailField && hasPasswordField };
+            });
+            
+            console.log('📝 [FIXED] Login form check:', loginFormExists);
+            
+            if (!loginFormExists.hasBoth) {
+                // Log current page state for debugging
+                const currentState = await page.evaluate(() => ({
+                    url: window.location.href,
+                    title: document.title,
+                    bodyText: document.body.innerText.substring(0, 500)
+                }));
+                console.log('🔍 [FIXED] Current page state:', currentState);
+                
+                throw new Error(`Login form incomplete. Email: ${loginFormExists.hasEmailField}, Password: ${loginFormExists.hasPasswordField}`);
+            }
+            
+            console.log('✅ [FIXED] Login form detected, filling credentials...');
+            
+            // Fill email
+            const emailFilled = await page.evaluate((username) => {
+                const emailSelectors = [
+                    'input[type="email"]',
+                    'input[name="email"]',
+                    'input[name="username"]',
+                    'input[name*="user"]',
+                    'input[name*="email"]'
+                ];
+                
+                for (let selector of emailSelectors) {
+                    const field = document.querySelector(selector);
+                    if (field && field.offsetWidth > 0 && field.offsetHeight > 0) {
+                        field.focus();
+                        field.value = '';
+                        field.value = username;
+                        field.dispatchEvent(new Event('input', { bubbles: true }));
+                        field.dispatchEvent(new Event('change', { bubbles: true }));
+                        return true;
+                    }
+                }
+                return false;
+            }, process.env.ASICS_USERNAME);
+            
+            if (!emailFilled) {
+                throw new Error('Could not fill email field');
+            }
+            
+            console.log('📧 [FIXED] Email filled');
+            
+            // Fill password
+            const passwordFilled = await page.evaluate((password) => {
+                const passwordField = document.querySelector('input[type="password"]');
+                if (passwordField && passwordField.offsetWidth > 0 && passwordField.offsetHeight > 0) {
+                    passwordField.focus();
+                    passwordField.value = '';
+                    passwordField.value = password;
+                    passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                    passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                return false;
+            }, process.env.ASICS_PASSWORD);
+            
+            if (!passwordFilled) {
+                throw new Error('Could not fill password field');
+            }
+            
+            console.log('🔒 [FIXED] Password filled');
+            
+            await this.delay(1000);
+            
+            // Click login
+            console.log('🔐 [FIXED] Clicking login button...');
+            
+            const loginClicked = await page.evaluate(() => {
+                const buttonSelectors = [
+                    'button[type="submit"]',
+                    'input[type="submit"]',
+                    'button'
+                ];
+                
+                for (let selector of buttonSelectors) {
+                    const buttons = document.querySelectorAll(selector);
+                    for (let button of buttons) {
+                        if (button.offsetWidth > 0 && button.offsetHeight > 0) {
+                            const text = (button.textContent || button.value || '').toLowerCase();
+                            if (text.includes('login') || text.includes('sign') || text.includes('submit') || button.type === 'submit') {
+                                button.click();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            });
+            
+            if (!loginClicked) {
+                throw new Error('Could not click login button');
+            }
+            
+            console.log('⏳ [FIXED] Waiting for login completion...');
+            await this.delay(5000);
+            
+            // Verify login
+            const currentUrl = page.url();
+            const currentTitle = await page.title();
+            
+            console.log('📍 [FIXED] After login URL:', currentUrl);
+            console.log('📍 [FIXED] After login title:', currentTitle);
+            
+            if (currentUrl.includes('/authentication/') || currentTitle.toLowerCase().includes('login')) {
+                const errorMessage = await page.evaluate(() => {
+                    const errorElements = document.querySelectorAll('[class*="error"], .alert, [role="alert"]');
+                    for (let el of errorElements) {
+                        const text = el.textContent.trim();
+                        if (text.length > 0) return text;
+                    }
+                    return null;
+                });
+                
+                throw new Error(errorMessage ? `Login failed: ${errorMessage}` : 'Login failed - still on auth page');
+            }
+            
+            console.log('✅ [FIXED] Authentication successful!');
+            await page.close();
+            
+            return browser;
+            
+        } catch (error) {
+            console.error('❌ [FIXED] Authentication failed:', error.message);
+            
+            try {
+                await page.screenshot({ type: 'png', fullPage: true });
+                console.log('📸 [FIXED] Screenshot taken');
+                
+                const debugInfo = await page.evaluate(() => ({
+                    url: window.location.href,
+                    title: document.title,
+                    bodySnippet: document.body.innerText.substring(0, 300)
+                }));
+                console.log('🔍 [FIXED] Debug info:', debugInfo);
+                
+            } catch (debugError) {
+                console.log('❌ Debug failed:', debugError.message);
+            }
+            
+            await browser.close();
+            throw error;
+        }
     }
 
     async scrapeAuthenticatedPage(browser, url, batchId) {
@@ -1663,7 +1904,7 @@ class ASICSWeeklyBatchScraper {
     async scrapeSinglePage(url) {
         let browser;
         try {
-            browser = await this.getBrowserWithAuth();
+            browser = await this.getAuthenticatedBrowser(); // Use new method
             const result = await this.scrapeAuthenticatedPage(browser, url, 'test_' + Date.now());
             return result;
         } catch (error) {
