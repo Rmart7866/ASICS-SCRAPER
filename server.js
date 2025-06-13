@@ -343,22 +343,9 @@ class RealASICSScraper {
         const results = [];
 
         try {
-            browser = await puppeteer.launch({
-                headless: 'new',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-extensions',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding'
-                ]
-            });
+           browser = await puppeteer.connect({
+    browserWSEndpoint: 'wss://chrome.browserless.io?token=YOUR_TOKEN'
+});
 
             console.log('🌐 Browser launched successfully');
 
