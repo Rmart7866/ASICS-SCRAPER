@@ -1,5 +1,5 @@
 // server.js - Complete ASICS Auto-Scraper with Real Scraping
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer');
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
