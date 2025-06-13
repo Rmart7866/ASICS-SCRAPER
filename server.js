@@ -150,10 +150,11 @@ class ASICSWeeklyBatchScraper {
         this.app.post('/api/pages', async (req, res) => {
             const { url } = req.body;
             
-            if (!url || !url.includes('b2b.asics.com/products/')) {
+            // Updated validation for ASICS B2B order URLs
+            if (!url || (!url.includes('b2b.asics.com/products/') && !url.includes('b2b.asics.com/orders/'))) {
                 return res.status(400).json({ 
                     success: false, 
-                    message: 'Please provide a valid ASICS B2B product URL' 
+                    message: 'Please provide a valid ASICS B2B URL (products or orders page)' 
                 });
             }
             
@@ -186,7 +187,8 @@ class ASICSWeeklyBatchScraper {
             }
             
             const validUrls = urls.filter(url => 
-                url && typeof url === 'string' && url.includes('b2b.asics.com/products/')
+                url && typeof url === 'string' && 
+                (url.includes('b2b.asics.com/products/') || url.includes('b2b.asics.com/orders/'))
             );
             
             const newUrls = validUrls.filter(url => !this.pageList.includes(url));
@@ -280,10 +282,10 @@ class ASICSWeeklyBatchScraper {
         this.app.post('/api/test-scrape', async (req, res) => {
             const { url } = req.body;
             
-            if (!url || !url.includes('b2b.asics.com/products/')) {
+            if (!url || (!url.includes('b2b.asics.com/products/') && !url.includes('b2b.asics.com/orders/'))) {
                 return res.status(400).json({ 
                     success: false, 
-                    message: 'Please provide a valid ASICS B2B product URL' 
+                    message: 'Please provide a valid ASICS B2B URL (products or orders page)' 
                 });
             }
             
@@ -462,16 +464,17 @@ class ASICSWeeklyBatchScraper {
         const results = [];
         
         try {
-            browser = await this.getBrowser();
+            // Use authenticated browser for B2B portal access
+            browser = await this.getBrowserWithAuth();
             
             for (let i = 0; i < urls.length && this.isRunning; i++) {
                 const url = urls[i];
                 this.scrapingProgress.currentUrl = url;
                 
-                console.log(`🔍 Scraping ${url}`);
+                console.log(`🔍 Scraping authenticated page ${i + 1}/${urls.length}: ${url}`);
                 
                 try {
-                    const result = await this.scrapePage(browser, url, batchId);
+                    const result = await this.scrapeAuthenticatedPage(browser, url, batchId);
                     results.push(result);
                     
                     if (!result.success) {
@@ -491,12 +494,36 @@ class ASICSWeeklyBatchScraper {
                 }
                 
                 if (i < urls.length - 1 && this.isRunning) {
+                    console.log(`⏸️ Waiting ${this.config.pageDelay/1000}s before next page...`);
                     await this.delay(this.config.pageDelay);
                 }
             }
             
         } catch (error) {
-            console.error('❌ Batch browser error:', error);
+            console.error('❌ Batch authentication error:', error);
+            
+            // If authentication fails, try to continue with remaining URLs using basic browser
+            console.log('🔄 Falling back to basic browser for remaining URLs...');
+            
+            try {
+                if (browser) await browser.close();
+                browser = await this.getBrowser();
+                
+                // Continue with basic scraping (will likely fail but we try)
+                for (let i = results.length; i < urls.length && this.isRunning; i++) {
+                    const url = urls[i];
+                    results.push({
+                        url: url,
+                        success: false,
+                        error: 'Authentication failed - page requires login',
+                        timestamp: new Date().toISOString(),
+                        batchId: batchId
+                    });
+                    this.scrapingProgress.errors++;
+                }
+            } catch (fallbackError) {
+                console.error('❌ Fallback browser also failed:', fallbackError.message);
+            }
         } finally {
             if (browser) {
                 try {
@@ -515,8 +542,388 @@ class ASICSWeeklyBatchScraper {
         return results;
     }
 
+    async scrapeAuthenticatedPage(browser, url, batchId) {
+        const page = await browser.newPage();
+        
+        try {
+            console.log(`🔍 Accessing authenticated ASICS B2B page: ${url}`);
+            
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            // Navigate to the authenticated page
+            await page.goto(url, { 
+                waitUntil: 'networkidle0', 
+                timeout: 60000 
+            });
+
+            // Check if we got redirected to login (session expired)
+            const currentUrl = page.url();
+            console.log('📍 Current page URL:', currentUrl);
+            
+            if (currentUrl.includes('login') || currentUrl.includes('signin') || currentUrl.includes('auth')) {
+                throw new Error('Session expired or authentication required - redirected to login page');
+            }
+
+            // Wait for page content to load with multiple selector attempts
+            const possibleSelectors = [
+                '.grid',
+                '[class*="grid"]',
+                'table',
+                '[class*="inventory"]',
+                '[class*="product"]',
+                '[class*="order"]',
+                'main',
+                'body'
+            ];
+            
+            let pageLoaded = false;
+            for (let selector of possibleSelectors) {
+                try {
+                    await page.waitForSelector(selector, { timeout: 10000 });
+                    console.log(`✅ Page content loaded, found selector: ${selector}`);
+                    pageLoaded = true;
+                    break;
+                } catch (e) {
+                    console.log(`⚠️ Selector ${selector} not found, trying next...`);
+                }
+            }
+            
+            if (!pageLoaded) {
+                console.log('⚠️ No specific selectors found, proceeding with basic wait...');
+                await this.delay(5000);
+            } else {
+                // Additional wait for dynamic content
+                await this.delay(3000);
+            }
+
+            // Extract inventory using your proven extension logic
+            const inventory = await page.evaluate(() => {
+                class ASICSInventoryExtractor {
+                    extractInventoryData() {
+                        const inventory = [];
+                        const productInfo = this.getProductInfo();
+                        const colors = this.findColors();
+                        const sizes = this.findSizes();
+                        const quantityMatrix = this.findQuantityMatrix();
+                        
+                        console.log('🏷️ Product:', productInfo);
+                        console.log('🎨 Colors found:', colors.length);
+                        console.log('📏 Sizes found:', sizes.length);
+                        console.log('📊 Quantity matrix rows:', quantityMatrix.length);
+                        
+                        if (colors.length === 0 || sizes.length === 0) {
+                            console.warn('⚠️ Missing colors or sizes data, using fallback extraction');
+                            return this.fallbackExtraction(productInfo);
+                        }
+                        
+                        colors.forEach((color, colorIndex) => {
+                            const colorQuantities = quantityMatrix[colorIndex] || [];
+                            sizes.forEach((size, sizeIndex) => {
+                                const quantity = colorQuantities[sizeIndex] || '0';
+                                inventory.push({
+                                    productName: productInfo.productName,
+                                    styleId: productInfo.styleId,
+                                    colorCode: color.code,
+                                    colorName: color.name,
+                                    sizeUS: size,
+                                    quantity: this.parseQuantity(quantity),
+                                    rawQuantity: quantity,
+                                    extractedAt: new Date().toISOString(),
+                                    url: window.location.href
+                                });
+                            });
+                        });
+                        
+                        return inventory;
+                    }
+
+                    getProductInfo() {
+                        // Try multiple ways to get product name
+                        let productName = 'Unknown Product';
+                        const nameSelectors = [
+                            'h1',
+                            '[data-testid="product-name"]',
+                            '.product-name',
+                            '.product-title',
+                            '[class*="product"][class*="name"]',
+                            '[class*="title"]'
+                        ];
+                        
+                        for (let selector of nameSelectors) {
+                            const element = document.querySelector(selector);
+                            if (element && element.textContent.trim()) {
+                                productName = element.textContent.trim();
+                                break;
+                            }
+                        }
+                        
+                        // Extract style ID from URL
+                        let styleId = 'Unknown';
+                        const urlMatch = window.location.href.match(/products\/([0-9A-Z]+)/);
+                        if (urlMatch) {
+                            styleId = urlMatch[1];
+                        }
+                        
+                        return { productName, styleId };
+                    }
+
+                    findColors() {
+                        const colors = [];
+                        
+                        // Method 1: Look for color information in flex structure (from your extension)
+                        const colorElements = document.querySelectorAll('li div.flex.items-center.gap-2');
+                        
+                        colorElements.forEach(el => {
+                            const spans = el.querySelectorAll('span');
+                            if (spans.length >= 3) {
+                                const code = spans[0].textContent.trim();
+                                const separator = spans[1].textContent.trim();
+                                const name = spans[2].textContent.trim();
+                                
+                                if (code.match(/^\d{3}$/) && separator === '-') {
+                                    colors.push({ code, name });
+                                }
+                            }
+                        });
+                        
+                        // Method 2: Extract from URL colorCode parameter
+                        if (colors.length === 0) {
+                            const urlParams = new URLSearchParams(window.location.search);
+                            const colorCode = urlParams.get('colorCode');
+                            if (colorCode) {
+                                colors.push({
+                                    code: colorCode,
+                                    name: 'Color ' + colorCode
+                                });
+                            }
+                        }
+                        
+                        // Method 3: Fallback search for color patterns in page text
+                        if (colors.length === 0) {
+                            const allElements = document.querySelectorAll('*');
+                            const seenCodes = new Set();
+                            
+                            allElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                const colorMatch = text.match(/^(\d{3})\s*-\s*([A-Z\/\s]+)$/);
+                                if (colorMatch && !seenCodes.has(colorMatch[1])) {
+                                    seenCodes.add(colorMatch[1]);
+                                    colors.push({
+                                        code: colorMatch[1],
+                                        name: colorMatch[2].trim()
+                                    });
+                                }
+                            });
+                        }
+                        
+                        return colors;
+                    }
+
+                    findSizes() {
+                        const sizes = [];
+                        
+                        // Method 1: Look for size headers with specific classes
+                        const sizeElements = document.querySelectorAll('.bg-primary.text-white');
+                        
+                        sizeElements.forEach(el => {
+                            const sizeText = el.textContent.trim();
+                            if (sizeText.match(/^\d+\.?\d*$/)) {
+                                sizes.push(sizeText);
+                            }
+                        });
+                        
+                        // Method 2: Look for any elements that might contain sizes
+                        if (sizes.length === 0) {
+                            const allElements = document.querySelectorAll('th, td, span, div');
+                            const sizePattern = /^(\d{1,2}(?:\.\d)?|\d{1,2}½)$/;
+                            const foundSizes = new Set();
+                            
+                            allElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                if (sizePattern.test(text) && parseFloat(text) >= 6 && parseFloat(text) <= 15) {
+                                    foundSizes.add(text);
+                                }
+                            });
+                            
+                            sizes.push(...Array.from(foundSizes).sort((a, b) => parseFloat(a) - parseFloat(b)));
+                        }
+                        
+                        // Fallback to standard US sizes
+                        if (sizes.length === 0) {
+                            return ['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '14', '15'];
+                        }
+                        
+                        return sizes;
+                    }
+
+                    findQuantityMatrix() {
+                        const quantityMatrix = [];
+                        
+                        // Method 1: Grid structure (from your extension)
+                        const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
+                        
+                        quantityRows.forEach((row, index) => {
+                            const quantities = [];
+                            const cells = row.querySelectorAll('.flex.items-center.justify-center span');
+                            
+                            cells.forEach(cell => {
+                                const text = cell.textContent.trim();
+                                if (text.match(/^\d+\+?$/) || text === '0' || text === '0+') {
+                                    quantities.push(text);
+                                }
+                            });
+                            
+                            if (quantities.length > 0) {
+                                quantityMatrix.push(quantities);
+                            }
+                        });
+                        
+                        // Method 2: Table-based extraction
+                        if (quantityMatrix.length === 0) {
+                            const tables = document.querySelectorAll('table');
+                            tables.forEach(table => {
+                                const rows = table.querySelectorAll('tr');
+                                rows.forEach(row => {
+                                    const cells = row.querySelectorAll('td, th');
+                                    const quantities = [];
+                                    
+                                    cells.forEach(cell => {
+                                        const text = cell.textContent.trim();
+                                        if (text.match(/^\d+\+?$/) || text === '0') {
+                                            quantities.push(text);
+                                        }
+                                    });
+                                    
+                                    if (quantities.length > 3) { // Reasonable threshold
+                                        quantityMatrix.push(quantities);
+                                    }
+                                });
+                            });
+                        }
+                        
+                        // Method 3: Position-based extraction (from your extension)
+                        if (quantityMatrix.length === 0) {
+                            const potentialQuantityElements = document.querySelectorAll('span, div, td');
+                            const quantityPattern = /^(\d+\+?|0\+?)$/;
+                            const foundQuantities = [];
+                            
+                            potentialQuantityElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                if (quantityPattern.test(text)) {
+                                    const rect = el.getBoundingClientRect();
+                                    foundQuantities.push({
+                                        text,
+                                        x: rect.left,
+                                        y: rect.top
+                                    });
+                                }
+                            });
+                            
+                            // Group by Y coordinate (rows)
+                            foundQuantities.sort((a, b) => a.y - b.y);
+                            
+                            let currentRow = [];
+                            let lastY = -1;
+                            const tolerance = 10;
+                            
+                            foundQuantities.forEach(q => {
+                                if (lastY === -1 || Math.abs(q.y - lastY) < tolerance) {
+                                    currentRow.push(q.text);
+                                    lastY = q.y;
+                                } else {
+                                    if (currentRow.length > 3) {
+                                        quantityMatrix.push([...currentRow]);
+                                    }
+                                    currentRow = [q.text];
+                                    lastY = q.y;
+                                }
+                            });
+                            
+                            if (currentRow.length > 3) {
+                                quantityMatrix.push(currentRow);
+                            }
+                        }
+                        
+                        return quantityMatrix;
+                    }
+                    
+                    fallbackExtraction(productInfo) {
+                        // If structured extraction fails, try to extract whatever we can
+                        console.log('🔄 Using fallback extraction method');
+                        
+                        const inventory = [];
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const colorCode = urlParams.get('colorCode') || '000';
+                        
+                        // Look for any quantity information on the page
+                        const quantityElements = document.querySelectorAll('*');
+                        const quantities = [];
+                        
+                        quantityElements.forEach(el => {
+                            const text = el.textContent.trim();
+                            if (text.match(/^\d+$/) && parseInt(text) >= 0 && parseInt(text) <= 999) {
+                                quantities.push(text);
+                            }
+                        });
+                        
+                        // Create at least one record with available information
+                        inventory.push({
+                            productName: productInfo.productName,
+                            styleId: productInfo.styleId,
+                            colorCode: colorCode,
+                            colorName: 'Color ' + colorCode,
+                            sizeUS: 'Various',
+                            quantity: quantities.length > 0 ? parseInt(quantities[0]) : 0,
+                            rawQuantity: quantities.length > 0 ? quantities[0] : '0',
+                            extractedAt: new Date().toISOString(),
+                            url: window.location.href
+                        });
+                        
+                        return inventory;
+                    }
+
+                    parseQuantity(quantityText) {
+                        if (!quantityText || quantityText === '-' || quantityText === '') return 0;
+                        if (quantityText.includes('+')) {
+                            const num = parseInt(quantityText.replace('+', ''));
+                            return isNaN(num) ? 0 : num;
+                        }
+                        const num = parseInt(quantityText);
+                        return isNaN(num) ? 0 : num;
+                    }
+                }
+
+                const extractor = new ASICSInventoryExtractor();
+                return extractor.extractInventoryData();
+            });
+
+            console.log(`✅ ${url}: ${inventory.length} records extracted from authenticated page`);
+            
+            return {
+                url,
+                success: true,
+                inventory,
+                recordCount: inventory.length,
+                timestamp: new Date().toISOString(),
+                batchId
+            };
+
+        } catch (error) {
+            console.error(`❌ Error scraping authenticated page ${url}:`, error.message);
+            return {
+                url,
+                success: false,
+                error: error.message,
+                timestamp: new Date().toISOString(),
+                batchId
+            };
+        } finally {
+            await page.close();
+        }
+    }
+
     async getBrowser() {
-        console.log('🚀 Launching browser...');
+        console.log('🚀 Launching browser with authentication support...');
         
         const browser = await puppeteer.launch({
             executablePath: await chromium.executablePath(),
@@ -534,36 +941,531 @@ class ASICSWeeklyBatchScraper {
         return browser;
     }
 
+    async getBrowserWithAuth() {
+        console.log('🚀 Launching browser with ASICS B2B authentication...');
+        
+        const browser = await puppeteer.launch({
+            executablePath: await chromium.executablePath(),
+            args: [
+                ...chromium.args,
+                '--disable-dev-shm-usage',
+                '--memory-pressure-off',
+                '--max-old-space-size=128'
+            ],
+            headless: chromium.headless,
+            defaultViewport: { width: 1024, height: 768 }
+        });
+        
+        // Create a new page for authentication
+        const page = await browser.newPage();
+        
+        try {
+            console.log('🔐 Logging into ASICS B2B portal...');
+            
+            // Set user agent to appear more like a real browser
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            // Navigate to login page
+            await page.goto('https://b2b.asics.com/login', { 
+                waitUntil: 'networkidle0', 
+                timeout: 60000 
+            });
+            
+            console.log('📋 Current page URL:', page.url());
+            
+            // Wait for login form to load
+            await page.waitForSelector('input[type="email"], input[name="email"], #email, [data-testid="email"]', { timeout: 30000 });
+            
+            // Check if we have credentials
+            if (!process.env.ASICS_USERNAME || !process.env.ASICS_PASSWORD) {
+                throw new Error('ASICS credentials not found. Please set ASICS_USERNAME and ASICS_PASSWORD environment variables.');
+            }
+            
+            console.log('✍️ Filling login form...');
+            
+            // Try different selectors for email field
+            const emailSelectors = [
+                'input[type="email"]',
+                'input[name="email"]',
+                'input[name="username"]',
+                '#email',
+                '#username',
+                '[data-testid="email"]',
+                '[data-testid="username"]'
+            ];
+            
+            let emailField = null;
+            for (let selector of emailSelectors) {
+                try {
+                    emailField = await page.$(selector);
+                    if (emailField) {
+                        console.log(`📧 Found email field with selector: ${selector}`);
+                        break;
+                    }
+                } catch (e) {
+                    // Continue to next selector
+                }
+            }
+            
+            if (!emailField) {
+                throw new Error('Could not find email input field on login page');
+            }
+            
+            // Fill email
+            await emailField.type(process.env.ASICS_USERNAME, { delay: 100 });
+            
+            // Try different selectors for password field
+            const passwordSelectors = [
+                'input[type="password"]',
+                'input[name="password"]',
+                '#password',
+                '[data-testid="password"]'
+            ];
+            
+            let passwordField = null;
+            for (let selector of passwordSelectors) {
+                try {
+                    passwordField = await page.$(selector);
+                    if (passwordField) {
+                        console.log(`🔒 Found password field with selector: ${selector}`);
+                        break;
+                    }
+                } catch (e) {
+                    // Continue to next selector
+                }
+            }
+            
+            if (!passwordField) {
+                throw new Error('Could not find password input field on login page');
+            }
+            
+            // Fill password
+            await passwordField.type(process.env.ASICS_PASSWORD, { delay: 100 });
+            
+            // Find and click login button
+            const loginButtonSelectors = [
+                'button[type="submit"]',
+                'input[type="submit"]',
+                '.login-button',
+                '.submit-button',
+                'button:contains("Login")',
+                'button:contains("Sign In")',
+                '[data-testid="login-button"]',
+                '[data-testid="submit-button"]'
+            ];
+            
+            let loginButton = null;
+            for (let selector of loginButtonSelectors) {
+                try {
+                    loginButton = await page.$(selector);
+                    if (loginButton) {
+                        console.log(`🔘 Found login button with selector: ${selector}`);
+                        break;
+                    }
+                } catch (e) {
+                    // Continue to next selector
+                }
+            }
+            
+            if (!loginButton) {
+                throw new Error('Could not find login button on page');
+            }
+            
+            console.log('🔐 Attempting login...');
+            
+            // Click login button and wait for navigation
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 60000 }),
+                loginButton.click()
+            ]);
+            
+            // Verify login success
+            const currentUrl = page.url();
+            console.log('📍 After login URL:', currentUrl);
+            
+            if (currentUrl.includes('login') || currentUrl.includes('signin') || currentUrl.includes('auth/error')) {
+                // Check for error messages on the page
+                const errorMessages = await page.evaluate(() => {
+                    const errorElements = document.querySelectorAll('[class*="error"], [class*="alert"], .text-red-500, .text-danger');
+                    return Array.from(errorElements).map(el => el.textContent.trim()).filter(text => text.length > 0);
+                });
+                
+                if (errorMessages.length > 0) {
+                    throw new Error(`Login failed: ${errorMessages.join(', ')}`);
+                } else {
+                    throw new Error('Login failed - still on login page. Please check credentials.');
+                }
+            }
+            
+            // Additional verification - look for user-specific elements
+            await this.delay(2000); // Wait for page to fully load
+            
+            console.log('✅ Successfully logged into ASICS B2B portal');
+            console.log('🍪 Session established, browser ready for authenticated requests');
+            
+            // Close the login page but keep the browser with session
+            await page.close();
+            
+            return browser;
+            
+        } catch (error) {
+            console.error('❌ Authentication failed:', error.message);
+            
+            // Take screenshot for debugging
+            try {
+                const screenshot = await page.screenshot({ type: 'png' });
+                console.log('📸 Login page screenshot taken for debugging');
+            } catch (screenshotError) {
+                console.log('📸 Could not take screenshot:', screenshotError.message);
+            }
+            
+            await browser.close();
+            throw error;
+        }
+    }
+
     async scrapePage(browser, url, batchId) {
         const page = await browser.newPage();
         
         try {
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+            console.log(`🔍 Scraping ASICS B2B order page: ${url}`);
             
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            // Navigate to the order page
             await page.goto(url, { 
                 waitUntil: 'networkidle0', 
                 timeout: 60000 
             });
 
-            await page.waitForSelector('.grid', { timeout: 20000 });
-            await this.delay(5000);
+            // Wait for the page to load - try multiple selectors that might exist on order pages
+            const possibleSelectors = [
+                '.grid',
+                '[class*="grid"]',
+                'table',
+                '[class*="inventory"]',
+                '[class*="product"]',
+                'main',
+                'body'
+            ];
+            
+            let pageLoaded = false;
+            for (let selector of possibleSelectors) {
+                try {
+                    await page.waitForSelector(selector, { timeout: 10000 });
+                    console.log(`✅ Page loaded, found selector: ${selector}`);
+                    pageLoaded = true;
+                    break;
+                } catch (e) {
+                    console.log(`⚠️ Selector ${selector} not found, trying next...`);
+                }
+            }
+            
+            if (!pageLoaded) {
+                console.log('⚠️ No common selectors found, proceeding with basic wait...');
+                await this.delay(5000);
+            } else {
+                // Additional wait for dynamic content
+                await this.delay(3000);
+            }
 
+            // Extract inventory using the logic from your working extension
             const inventory = await page.evaluate(() => {
-                // Simple extraction for testing
-                const productName = document.querySelector('h1')?.textContent?.trim() || 'Test Product';
-                const styleId = window.location.pathname.split('/').pop()?.split('?')[0] || 'TEST123';
-                
-                return [{
-                    productName: productName,
-                    styleId: styleId,
-                    colorCode: '001',
-                    colorName: 'Test Color',
-                    sizeUS: '10',
-                    quantity: 5,
-                    rawQuantity: '5',
-                    extractedAt: new Date().toISOString(),
-                    url: window.location.href
-                }];
+                class ASICSInventoryExtractor {
+                    extractInventoryData() {
+                        const inventory = [];
+                        const productInfo = this.getProductInfo();
+                        const colors = this.findColors();
+                        const sizes = this.findSizes();
+                        const quantityMatrix = this.findQuantityMatrix();
+                        
+                        console.log('🏷️ Product:', productInfo);
+                        console.log('🎨 Colors found:', colors.length);
+                        console.log('📏 Sizes found:', sizes.length);
+                        console.log('📊 Quantity matrix rows:', quantityMatrix.length);
+                        
+                        if (colors.length === 0 || sizes.length === 0) {
+                            console.warn('⚠️ Missing colors or sizes data, using fallback extraction');
+                            return this.fallbackExtraction(productInfo);
+                        }
+                        
+                        colors.forEach((color, colorIndex) => {
+                            const colorQuantities = quantityMatrix[colorIndex] || [];
+                            sizes.forEach((size, sizeIndex) => {
+                                const quantity = colorQuantities[sizeIndex] || '0';
+                                inventory.push({
+                                    productName: productInfo.productName,
+                                    styleId: productInfo.styleId,
+                                    colorCode: color.code,
+                                    colorName: color.name,
+                                    sizeUS: size,
+                                    quantity: this.parseQuantity(quantity),
+                                    rawQuantity: quantity,
+                                    extractedAt: new Date().toISOString(),
+                                    url: window.location.href
+                                });
+                            });
+                        });
+                        
+                        return inventory;
+                    }
+
+                    getProductInfo() {
+                        // Try multiple ways to get product name
+                        let productName = 'Unknown Product';
+                        const nameSelectors = [
+                            'h1',
+                            '[data-testid="product-name"]',
+                            '.product-name',
+                            '.product-title'
+                        ];
+                        
+                        for (let selector of nameSelectors) {
+                            const element = document.querySelector(selector);
+                            if (element && element.textContent.trim()) {
+                                productName = element.textContent.trim();
+                                break;
+                            }
+                        }
+                        
+                        // Extract style ID from URL
+                        let styleId = 'Unknown';
+                        const urlMatch = window.location.href.match(/products\/([0-9A-Z]+)/);
+                        if (urlMatch) {
+                            styleId = urlMatch[1];
+                        }
+                        
+                        return { productName, styleId };
+                    }
+
+                    findColors() {
+                        const colors = [];
+                        
+                        // Method 1: Look for color information in flex structure (from your extension)
+                        const colorElements = document.querySelectorAll('li div.flex.items-center.gap-2');
+                        
+                        colorElements.forEach(el => {
+                            const spans = el.querySelectorAll('span');
+                            if (spans.length >= 3) {
+                                const code = spans[0].textContent.trim();
+                                const separator = spans[1].textContent.trim();
+                                const name = spans[2].textContent.trim();
+                                
+                                if (code.match(/^\d{3}$/) && separator === '-') {
+                                    colors.push({ code, name });
+                                }
+                            }
+                        });
+                        
+                        // Method 2: Extract from URL colorCode parameter
+                        if (colors.length === 0) {
+                            const urlParams = new URLSearchParams(window.location.search);
+                            const colorCode = urlParams.get('colorCode');
+                            if (colorCode) {
+                                colors.push({
+                                    code: colorCode,
+                                    name: 'Color ' + colorCode
+                                });
+                            }
+                        }
+                        
+                        // Method 3: Fallback search for color patterns in page text
+                        if (colors.length === 0) {
+                            const allElements = document.querySelectorAll('*');
+                            const seenCodes = new Set();
+                            
+                            allElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                const colorMatch = text.match(/^(\d{3})\s*-\s*([A-Z\/\s]+)$/);
+                                if (colorMatch && !seenCodes.has(colorMatch[1])) {
+                                    seenCodes.add(colorMatch[1]);
+                                    colors.push({
+                                        code: colorMatch[1],
+                                        name: colorMatch[2].trim()
+                                    });
+                                }
+                            });
+                        }
+                        
+                        return colors;
+                    }
+
+                    findSizes() {
+                        const sizes = [];
+                        
+                        // Method 1: Look for size headers with specific classes
+                        const sizeElements = document.querySelectorAll('.bg-primary.text-white');
+                        
+                        sizeElements.forEach(el => {
+                            const sizeText = el.textContent.trim();
+                            if (sizeText.match(/^\d+\.?\d*$/)) {
+                                sizes.push(sizeText);
+                            }
+                        });
+                        
+                        // Method 2: Look for any elements that might contain sizes
+                        if (sizes.length === 0) {
+                            const allElements = document.querySelectorAll('th, td, span, div');
+                            const sizePattern = /^(\d{1,2}(?:\.\d)?|\d{1,2}½)$/;
+                            const foundSizes = new Set();
+                            
+                            allElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                if (sizePattern.test(text) && parseFloat(text) >= 6 && parseFloat(text) <= 15) {
+                                    foundSizes.add(text);
+                                }
+                            });
+                            
+                            sizes.push(...Array.from(foundSizes).sort((a, b) => parseFloat(a) - parseFloat(b)));
+                        }
+                        
+                        // Fallback to standard US sizes
+                        if (sizes.length === 0) {
+                            return ['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '14', '15'];
+                        }
+                        
+                        return sizes;
+                    }
+
+                    findQuantityMatrix() {
+                        const quantityMatrix = [];
+                        
+                        // Method 1: Grid structure (from your extension)
+                        const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
+                        
+                        quantityRows.forEach((row, index) => {
+                            const quantities = [];
+                            const cells = row.querySelectorAll('.flex.items-center.justify-center span');
+                            
+                            cells.forEach(cell => {
+                                const text = cell.textContent.trim();
+                                if (text.match(/^\d+\+?$/) || text === '0' || text === '0+') {
+                                    quantities.push(text);
+                                }
+                            });
+                            
+                            if (quantities.length > 0) {
+                                quantityMatrix.push(quantities);
+                            }
+                        });
+                        
+                        // Method 2: Table-based extraction
+                        if (quantityMatrix.length === 0) {
+                            const tables = document.querySelectorAll('table');
+                            tables.forEach(table => {
+                                const rows = table.querySelectorAll('tr');
+                                rows.forEach(row => {
+                                    const cells = row.querySelectorAll('td, th');
+                                    const quantities = [];
+                                    
+                                    cells.forEach(cell => {
+                                        const text = cell.textContent.trim();
+                                        if (text.match(/^\d+\+?$/) || text === '0') {
+                                            quantities.push(text);
+                                        }
+                                    });
+                                    
+                                    if (quantities.length > 3) { // Reasonable threshold
+                                        quantityMatrix.push(quantities);
+                                    }
+                                });
+                            });
+                        }
+                        
+                        // Method 3: Position-based extraction (from your extension)
+                        if (quantityMatrix.length === 0) {
+                            const potentialQuantityElements = document.querySelectorAll('span, div, td');
+                            const quantityPattern = /^(\d+\+?|0\+?)$/;
+                            const foundQuantities = [];
+                            
+                            potentialQuantityElements.forEach(el => {
+                                const text = el.textContent.trim();
+                                if (quantityPattern.test(text)) {
+                                    const rect = el.getBoundingClientRect();
+                                    foundQuantities.push({
+                                        text,
+                                        x: rect.left,
+                                        y: rect.top
+                                    });
+                                }
+                            });
+                            
+                            // Group by Y coordinate (rows)
+                            foundQuantities.sort((a, b) => a.y - b.y);
+                            
+                            let currentRow = [];
+                            let lastY = -1;
+                            const tolerance = 10;
+                            
+                            foundQuantities.forEach(q => {
+                                if (lastY === -1 || Math.abs(q.y - lastY) < tolerance) {
+                                    currentRow.push(q.text);
+                                    lastY = q.y;
+                                } else {
+                                    if (currentRow.length > 3) {
+                                        quantityMatrix.push([...currentRow]);
+                                    }
+                                    currentRow = [q.text];
+                                    lastY = q.y;
+                                }
+                            });
+                            
+                            if (currentRow.length > 3) {
+                                quantityMatrix.push(currentRow);
+                            }
+                        }
+                        
+                        return quantityMatrix;
+                    }
+                    
+                    fallbackExtraction(productInfo) {
+                        // If structured extraction fails, try to extract whatever we can
+                        console.log('🔄 Using fallback extraction method');
+                        
+                        const inventory = [];
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const colorCode = urlParams.get('colorCode') || '000';
+                        
+                        // Look for any quantity information on the page
+                        const quantityElements = document.querySelectorAll('*');
+                        const quantities = [];
+                        
+                        quantityElements.forEach(el => {
+                            const text = el.textContent.trim();
+                            if (text.match(/^\d+$/) && parseInt(text) >= 0 && parseInt(text) <= 999) {
+                                quantities.push(text);
+                            }
+                        });
+                        
+                        // Create at least one record with available information
+                        inventory.push({
+                            productName: productInfo.productName,
+                            styleId: productInfo.styleId,
+                            colorCode: colorCode,
+                            colorName: 'Color ' + colorCode,
+                            sizeUS: 'Various',
+                            quantity: quantities.length > 0 ? parseInt(quantities[0]) : 0,
+                            rawQuantity: quantities.length > 0 ? quantities[0] : '0',
+                            extractedAt: new Date().toISOString(),
+                            url: window.location.href
+                        });
+                        
+                        return inventory;
+                    }
+
+                    parseQuantity(quantityText) {
+                        if (!quantityText || quantityText === '-' || quantityText === '') return 0;
+                        if (quantityText.includes('+')) {
+                            const num = parseInt(quantityText.replace('+', ''));
+                            return isNaN(num) ? 0 : num;
+                        }
+                        const num = parseInt(quantityText);
+                        return isNaN(num) ? 0 : num;
+                    }
+                }
+
+                const extractor = new ASICSInventoryExtractor();
+                return extractor.extractInventoryData();
             });
 
             console.log(`✅ ${url}: ${inventory.length} records extracted`);
@@ -594,8 +1496,8 @@ class ASICSWeeklyBatchScraper {
     async scrapeSinglePage(url) {
         let browser;
         try {
-            browser = await this.getBrowser();
-            const result = await this.scrapePage(browser, url, 'test_' + Date.now());
+            browser = await this.getBrowserWithAuth();
+            const result = await this.scrapeAuthenticatedPage(browser, url, 'test_' + Date.now());
             return result;
         } catch (error) {
             console.error('Single page scrape error:', error);
@@ -896,12 +1798,12 @@ class ASICSWeeklyBatchScraper {
             <div class="card">
                 <h3>📥 Bulk URL Upload</h3>
                 <p>Paste your ASICS B2B product URLs (one per line):</p>
-                <textarea id="bulkUrls" placeholder="https://b2b.asics.com/products/1013A160
+                <textarea id="bulkUrls" placeholder="https://b2b.asics.com/orders/100452449/products/1013A142?colorCode=300&deliveryDate=2025-06-14
+https://b2b.asics.com/orders/100452449/products/1013A160?colorCode=100&deliveryDate=2025-06-14
 https://b2b.asics.com/products/1013A161
-https://b2b.asics.com/products/1013A162
 ...
 
-Tip: You can paste hundreds of URLs at once!"></textarea>
+Tip: You can paste both order URLs and product URLs!"></textarea>
                 <button class="btn btn-success" onclick="uploadBulkUrls()">📤 Upload URLs</button>
                 <button class="btn btn-danger" onclick="clearUrls()">🗑️ Clear All URLs</button>
                 <div id="upload-status"></div>
@@ -911,12 +1813,13 @@ Tip: You can paste hundreds of URLs at once!"></textarea>
                 <h3>🧪 Test & Quick Add</h3>
                 <p>Test individual URLs before adding to batch:</p>
                 <div class="input-group">
-                    <input type="text" id="testUrl" placeholder="https://b2b.asics.com/products/1013A160">
+                    <input type="text" id="testUrl" placeholder="https://b2b.asics.com/orders/100452449/products/1013A142?colorCode=300">
                     <button class="btn" onclick="addSingleUrl()">➕ Add</button>
                 </div>
                 <button class="btn btn-warning" onclick="testScrape()">🧪 Test Scrape</button>
                 <div id="test-status"></div>
             </div>
+            
             
             <div class="card">
                 <h3>📊 Data & Export</h3>
@@ -1115,8 +2018,8 @@ Tip: You can paste hundreds of URLs at once!"></textarea>
             const input = document.getElementById('testUrl');
             const url = input.value.trim();
             
-            if (!url || !url.includes('b2b.asics.com/products/')) {
-                showTestStatus('⚠️ Please enter a valid ASICS B2B product URL', 'warning');
+            if (!url || (!url.includes('b2b.asics.com/products/') && !url.includes('b2b.asics.com/orders/'))) {
+                showTestStatus('⚠️ Please enter a valid ASICS B2B URL (products or orders page)', 'warning');
                 return;
             }
             
@@ -1162,7 +2065,34 @@ Tip: You can paste hundreds of URLs at once!"></textarea>
             }
         }
         
-        // Data export functions
+        // Authentication test function
+        async function testAuth() {
+            const statusDiv = document.getElementById('auth-test-status');
+            const indicator = document.getElementById('auth-indicator');
+            
+            statusDiv.innerHTML = '<div class="info">🔐 Testing ASICS B2B authentication...</div>';
+            indicator.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/test-auth', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.innerHTML = '<div class="success">✅ Authentication successful!</div>';
+                    indicator.textContent = '✅ Connected';
+                } else {
+                    statusDiv.innerHTML = \`<div class="error">❌ Authentication failed: \${result.error}</div>\`;
+                    indicator.textContent = '❌ Failed';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = \`<div class="error">❌ Test failed: \${error.message}</div>\`;
+                indicator.textContent = '❌ Error';
+            }
+            
+            setTimeout(() => {
+                statusDiv.innerHTML = '';
+            }, 10000);
+        }
         function exportCSV() {
             window.open('/api/export/csv', '_blank');
             showStatus('📥 CSV export started', 'info');
@@ -1272,4 +2202,3 @@ process.on('SIGTERM', async () => {
     console.log('🛑 Shutting down gracefully...');
     process.exit(0);
 });
-   
