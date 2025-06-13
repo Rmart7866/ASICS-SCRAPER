@@ -3,11 +3,9 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "npm rebuild"
+    "start": "node server.js"
   },
   "dependencies": {
-    "puppeteer-core": "^21.6.1",
     "express": "^4.18.2",
     "node-cron": "^3.0.3",
     "pg": "^8.11.3",
