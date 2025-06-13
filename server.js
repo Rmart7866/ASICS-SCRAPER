@@ -1879,5 +1879,4 @@ process.on('SIGINT', async () => {
     }
     process.exit(0);
 });
-    process.exit(0);
-});
+   
