@@ -1,17 +1,35 @@
-// server.js - Complete ASICS Auto-Scraper with Real Scraping
-const puppeteer = require('puppeteer');
+// server.js - ASICS Weekly Batch Scraper - Optimized for Render Starter Tier
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 const { Pool } = require('pg');
 
-class RealASICSScraper {
+class ASICSWeeklyBatchScraper {
     constructor() {
         this.app = express();
         this.setupDatabase();
         this.pageList = [];
         this.isRunning = false;
         this.lastScrapeTime = null;
+        this.currentBatch = 0;
+        this.totalBatches = 0;
+        this.scrapingProgress = {
+            total: 0,
+            completed: 0,
+            errors: 0,
+            currentUrl: null,
+            startTime: null
+        };
+        
+        // Configuration for starter tier
+        this.config = {
+            batchSize: parseInt(process.env.WEEKLY_BATCH_SIZE) || 5,
+            batchDelay: (parseInt(process.env.BATCH_DELAY_SECONDS) || 30) * 1000,
+            pageDelay: (parseInt(process.env.PAGE_DELAY_SECONDS) || 10) * 1000,
+            maxRetries: 2
+        };
         
         this.setupMiddleware();
         this.setupRoutes();
@@ -21,13 +39,17 @@ class RealASICSScraper {
     setupDatabase() {
         this.db = new Pool({
             connectionString: process.env.DATABASE_URL,
-            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+            ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+            max: 3, // Limit connections for starter tier
+            connectionTimeoutMillis: 30000,
+            idleTimeoutMillis: 30000
         });
     }
 
     setupMiddleware() {
         this.app.use(cors());
-        this.app.use(express.json());
+        this.app.use(express.json({ limit: '10mb' })); // For bulk URL uploads
+        this.app.use(express.text({ limit: '10mb' }));
     }
 
     setupRoutes() {
@@ -36,46 +58,95 @@ class RealASICSScraper {
             res.send(this.getDashboardHTML());
         });
 
-        // Status API
+        // Status APIs
         this.app.get('/api/status', (req, res) => {
             res.json({
-                status: '🚀 ASICS Real Auto-Scraper Running',
-                pages: this.pageList.length,
-                isScrapingNow: this.isRunning,
+                status: '📅 ASICS Weekly Batch Scraper',
+                totalUrls: this.pageList.length,
+                isRunning: this.isRunning,
                 lastScrape: this.lastScrapeTime,
+                nextScrape: this.getNextScrapeTime(),
                 uptime: Math.floor(process.uptime()),
-                version: '3.0.0 - REAL SCRAPING'
+                version: '1.0.0 - Weekly Batch',
+                config: this.config,
+                memoryUsage: this.getMemoryUsage()
             });
         });
 
-        // Trigger manual scrape
-        this.app.post('/api/scrape-now', async (req, res) => {
+        this.app.get('/api/progress', (req, res) => {
+            res.json({
+                isRunning: this.isRunning,
+                progress: this.scrapingProgress,
+                currentBatch: this.currentBatch,
+                totalBatches: this.totalBatches,
+                lastScrape: this.lastScrapeTime,
+                nextScrape: this.getNextScrapeTime()
+            });
+        });
+
+        this.app.get('/api/batch-status', (req, res) => {
+            const percentage = this.scrapingProgress.total > 0 ? 
+                Math.round((this.scrapingProgress.completed / this.scrapingProgress.total) * 100) : 0;
+                
+            res.json({
+                status: this.isRunning ? 'Running Weekly Batch' : 'Waiting for Next Week',
+                percentage: percentage,
+                completed: this.scrapingProgress.completed,
+                total: this.scrapingProgress.total,
+                errors: this.scrapingProgress.errors,
+                currentUrl: this.scrapingProgress.currentUrl,
+                estimatedMinutesRemaining: this.calculateTimeRemaining(),
+                currentBatch: this.currentBatch,
+                totalBatches: this.totalBatches
+            });
+        });
+
+        // Batch control
+        this.app.post('/api/start-batch', async (req, res) => {
             if (this.isRunning) {
                 return res.json({ 
                     success: false, 
-                    message: 'Scraper already running' 
+                    message: 'Weekly batch already running' 
                 });
             }
             
             if (this.pageList.length === 0) {
                 return res.json({ 
                     success: false, 
-                    message: 'No pages to scrape. Add some URLs first.' 
+                    message: 'No URLs to scrape. Please add some URLs first.' 
                 });
             }
             
-            // Start scraping in background
-            this.scrapeAllPages();
+            // Start batch in background
+            this.startWeeklyBatch();
             res.json({ 
                 success: true, 
-                message: `Real scraping started for ${this.pageList.length} pages`,
-                pages: this.pageList.length 
+                message: `Weekly batch started for ${this.pageList.length} URLs`,
+                estimatedDuration: Math.ceil(this.pageList.length / this.config.batchSize) * 2 + ' minutes'
             });
         });
 
-        // Page management
+        this.app.post('/api/stop-batch', (req, res) => {
+            if (!this.isRunning) {
+                return res.json({ 
+                    success: false, 
+                    message: 'No batch currently running' 
+                });
+            }
+            
+            this.isRunning = false;
+            res.json({ 
+                success: true, 
+                message: 'Batch stop requested - will complete current mini-batch' 
+            });
+        });
+
+        // URL management
         this.app.get('/api/pages', (req, res) => {
-            res.json({ pages: this.pageList });
+            res.json({ 
+                pages: this.pageList,
+                total: this.pageList.length
+            });
         });
 
         this.app.post('/api/pages', async (req, res) => {
@@ -100,32 +171,93 @@ class RealASICSScraper {
             
             res.json({ 
                 success: true, 
-                message: 'Page added successfully', 
+                message: 'URL added successfully', 
                 total: this.pageList.length 
             });
         });
 
-        this.app.delete('/api/pages', async (req, res) => {
-            const { url } = req.body;
-            const index = this.pageList.indexOf(url);
+        // Bulk URL management
+        this.app.post('/api/bulk-add', async (req, res) => {
+            const { urls } = req.body;
             
-            if (index > -1) {
-                this.pageList.splice(index, 1);
-                await this.savePageList();
-                res.json({ 
-                    success: true, 
-                    message: 'Page removed successfully', 
-                    total: this.pageList.length 
-                });
-            } else {
-                res.status(404).json({ 
+            if (!Array.isArray(urls)) {
+                return res.status(400).json({ 
                     success: false, 
-                    message: 'Page not found' 
+                    message: 'Please provide an array of URLs' 
+                });
+            }
+            
+            const validUrls = urls.filter(url => 
+                url && typeof url === 'string' && url.includes('b2b.asics.com/products/')
+            );
+            
+            const newUrls = validUrls.filter(url => !this.pageList.includes(url));
+            
+            this.pageList.push(...newUrls);
+            await this.savePageList();
+            
+            res.json({
+                success: true,
+                message: `Added ${newUrls.length} new URLs (${validUrls.length - newUrls.length} duplicates, ${urls.length - validUrls.length} invalid)`,
+                total: this.pageList.length,
+                added: newUrls.length,
+                duplicates: validUrls.length - newUrls.length,
+                invalid: urls.length - validUrls.length
+            });
+        });
+
+        this.app.post('/api/bulk-upload', async (req, res) => {
+            const { content, format } = req.body;
+            
+            let urls = [];
+            
+            try {
+                if (format === 'csv') {
+                    urls = content.split('\n')
+                        .map(line => line.split(',')[0]?.trim())
+                        .filter(url => url && url.includes('b2b.asics.com/products/'));
+                } else {
+                    // Plain text, one URL per line
+                    urls = content.split('\n')
+                        .map(line => line.trim())
+                        .filter(url => url && url.includes('b2b.asics.com/products/'));
+                }
+                
+                const newUrls = urls.filter(url => !this.pageList.includes(url));
+                this.pageList.push(...newUrls);
+                await this.savePageList();
+                
+                res.json({
+                    success: true,
+                    message: `Processed ${urls.length} URLs, added ${newUrls.length} new ones`,
+                    total: this.pageList.length
+                });
+                
+            } catch (error) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Error processing URLs: ' + error.message
                 });
             }
         });
 
-        // View scraped data
+        this.app.post('/api/clear-all-pages', async (req, res) => {
+            try {
+                this.pageList = [];
+                await this.savePageList();
+                res.json({ 
+                    success: true, 
+                    message: 'All URLs cleared' 
+                });
+            } catch (error) {
+                res.status(500).json({ 
+                    success: false, 
+                    message: 'Error clearing URLs: ' + error.message 
+                });
+            }
+        });
+
+        // Data export and viewing
         this.app.get('/api/inventory', async (req, res) => {
             try {
                 const result = await this.db.query(`
@@ -136,7 +268,7 @@ class RealASICSScraper {
                     FROM current_inventory 
                     GROUP BY style_id, product_name
                     ORDER BY last_updated DESC
-                    LIMIT 50
+                    LIMIT 100
                 `);
                 res.json({ inventory: result.rows });
             } catch (error) {
@@ -144,7 +276,6 @@ class RealASICSScraper {
             }
         });
 
-        // View detailed inventory for a specific product
         this.app.get('/api/inventory/:styleId', async (req, res) => {
             try {
                 const { styleId } = req.params;
@@ -159,19 +290,6 @@ class RealASICSScraper {
             }
         });
 
-        // View scraping logs
-        this.app.get('/api/logs', async (req, res) => {
-            try {
-                const result = await this.db.query(
-                    'SELECT * FROM scrape_logs ORDER BY created_at DESC LIMIT 20'
-                );
-                res.json({ logs: result.rows });
-            } catch (error) {
-                res.status(500).json({ error: error.message });
-            }
-        });
-
-        // Download inventory as CSV
         this.app.get('/api/export/csv', async (req, res) => {
             try {
                 const result = await this.db.query(`
@@ -187,14 +305,30 @@ class RealASICSScraper {
                 ).join('\n');
                 
                 res.setHeader('Content-Type', 'text/csv');
-                res.setHeader('Content-Disposition', 'attachment; filename=asics-inventory.csv');
+                res.setHeader('Content-Disposition', 'attachment; filename=asics-weekly-inventory.csv');
                 res.send(csvHeaders + csvData);
             } catch (error) {
                 res.status(500).json({ error: error.message });
             }
         });
 
-        // Test single page scraping
+        // Logs and monitoring
+        this.app.get('/api/logs', async (req, res) => {
+            try {
+                const result = await this.db.query(
+                    'SELECT * FROM scrape_logs ORDER BY created_at DESC LIMIT 50'
+                );
+                res.json({ logs: result.rows });
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        this.app.get('/api/memory', (req, res) => {
+            res.json(this.getMemoryUsage());
+        });
+
+        // Test endpoints
         this.app.post('/api/test-scrape', async (req, res) => {
             const { url } = req.body;
             
@@ -206,14 +340,14 @@ class RealASICSScraper {
             }
             
             try {
-                console.log(`🧪 Testing real scrape of: ${url}`);
+                console.log(`🧪 Testing scrape of: ${url}`);
                 const result = await this.scrapeSinglePage(url);
                 
                 if (result.success && result.inventory && result.inventory.length > 0) {
                     await this.saveInventoryToDatabase(result.inventory);
                     res.json({
                         success: true,
-                        message: `Successfully scraped ${result.inventory.length} records from ${url}`,
+                        message: `Successfully scraped ${result.inventory.length} records`,
                         data: result
                     });
                 } else {
@@ -234,13 +368,15 @@ class RealASICSScraper {
     }
 
     async init() {
-        console.log('🚀 Initializing Real ASICS Auto-Scraper...');
+        console.log('🚀 Initializing ASICS Weekly Batch Scraper...');
+        console.log('💾 Memory available:', this.getMemoryUsage());
         
         await this.setupDatabaseTables();
         await this.loadPageList();
         this.startScheduler();
         
-        console.log(`✅ Real scraper initialized with ${this.pageList.length} pages`);
+        console.log(`✅ Weekly batch scraper initialized with ${this.pageList.length} URLs`);
+        console.log(`⚙️ Config: ${this.config.batchSize} URLs per batch, ${this.config.batchDelay/1000}s delay`);
     }
 
     async setupDatabaseTables() {
@@ -252,7 +388,9 @@ class RealASICSScraper {
                     id SERIAL PRIMARY KEY,
                     url VARCHAR(500) NOT NULL UNIQUE,
                     active BOOLEAN DEFAULT true,
-                    created_at TIMESTAMP DEFAULT NOW()
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    last_scraped TIMESTAMP,
+                    scrape_count INTEGER DEFAULT 0
                 )
             `);
 
@@ -268,6 +406,7 @@ class RealASICSScraper {
                     raw_quantity VARCHAR(20),
                     source_url VARCHAR(500),
                     scraped_at TIMESTAMP,
+                    batch_id VARCHAR(50),
                     UNIQUE(style_id, color_code, size_us)
                 )
             `);
@@ -275,13 +414,22 @@ class RealASICSScraper {
             await client.query(`
                 CREATE TABLE IF NOT EXISTS scrape_logs (
                     id SERIAL PRIMARY KEY,
+                    batch_id VARCHAR(50),
                     total_pages INTEGER,
                     success_count INTEGER,
                     error_count INTEGER,
                     record_count INTEGER,
                     duration_seconds INTEGER,
+                    memory_used_mb INTEGER,
                     created_at TIMESTAMP DEFAULT NOW()
                 )
+            `);
+
+            // Add indexes for better performance
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_inventory_style ON current_inventory(style_id);
+                CREATE INDEX IF NOT EXISTS idx_inventory_scraped ON current_inventory(scraped_at);
+                CREATE INDEX IF NOT EXISTS idx_logs_created ON scrape_logs(created_at);
             `);
 
             console.log('✅ Database tables ready');
@@ -299,7 +447,7 @@ class RealASICSScraper {
                 'SELECT url FROM monitored_pages WHERE active = true ORDER BY created_at'
             );
             this.pageList = result.rows.map(row => row.url);
-            console.log(`📋 Loaded ${this.pageList.length} pages to monitor`);
+            console.log(`📋 Loaded ${this.pageList.length} URLs to monitor`);
         } catch (error) {
             console.error('Error loading pages:', error);
             this.pageList = [];
@@ -307,115 +455,221 @@ class RealASICSScraper {
     }
 
     startScheduler() {
-        console.log('🕐 Starting real scraping scheduler - every 30 minutes');
+        console.log('📅 Starting weekly scheduler - every Sunday at 2:00 AM');
         
-        // Run first scrape after 2 minutes if we have pages
-        setTimeout(() => {
-            if (this.pageList.length > 0) {
-                console.log('🚀 Running initial real scrape...');
-                this.scrapeAllPages();
-            } else {
-                console.log('📝 No pages to scrape. Add some URLs first.');
-            }
-        }, 120000);
-        
-        // Then every 30 minutes
-        cron.schedule('*/30 * * * *', () => {
-            if (this.pageList.length > 0) {
-                console.log('⏰ Scheduled real scrape triggered');
-                this.scrapeAllPages();
+        // Run every Sunday at 2 AM
+        cron.schedule('0 2 * * 0', () => {
+            if (!this.isRunning && this.pageList.length > 0) {
+                console.log('📅 Scheduled weekly batch triggered');
+                this.startWeeklyBatch();
             }
         });
+        
+        // Optional manual trigger for testing (disabled in production)
+        if (process.env.NODE_ENV !== 'production') {
+            setTimeout(() => {
+                if (this.pageList.length > 0) {
+                    console.log('🧪 Test batch starting in 2 minutes (dev mode)...');
+                    // Uncomment to test immediately:
+                    // setTimeout(() => this.startWeeklyBatch(), 120000);
+                }
+            }, 5000);
+        }
     }
 
-    async scrapeAllPages() {
+    async startWeeklyBatch() {
         if (this.isRunning) {
-            console.log('⏳ Scraper already running, skipping...');
+            console.log('⏳ Batch already running, skipping...');
             return;
         }
 
         this.isRunning = true;
-        const startTime = Date.now();
+        this.scrapingProgress.total = this.pageList.length;
+        this.scrapingProgress.completed = 0;
+        this.scrapingProgress.errors = 0;
+        this.scrapingProgress.startTime = Date.now();
         
-        console.log(`🚀 Starting real scrape of ${this.pageList.length} pages`);
-
-        let browser;
-        const results = [];
-
+        const batchId = `batch_${Date.now()}`;
+        console.log(`🚀 Starting weekly batch ${batchId}: ${this.pageList.length} URLs`);
+        console.log(`📊 Memory before batch: ${JSON.stringify(this.getMemoryUsage())}`);
+        
+        this.totalBatches = Math.ceil(this.pageList.length / this.config.batchSize);
+        let allResults = [];
+        
         try {
-           browser = await puppeteer.connect({
-    browserWSEndpoint: 'wss://chrome.browserless.io?token=YOUR_TOKEN'
-});
-
-            console.log('🌐 Browser launched successfully');
-
-            // Process pages in small batches to avoid memory issues
-            const batchSize = 2;
-            for (let i = 0; i < this.pageList.length; i += batchSize) {
-                const batch = this.pageList.slice(i, i + batchSize);
-                console.log(`📦 Processing batch ${Math.floor(i/batchSize) + 1}: ${batch.length} pages`);
+            for (let i = 0; i < this.pageList.length && this.isRunning; i += this.config.batchSize) {
+                this.currentBatch = Math.floor(i / this.config.batchSize) + 1;
+                const batch = this.pageList.slice(i, i + this.config.batchSize);
                 
-                const batchPromises = batch.map(url => this.scrapePage(browser, url));
-                const batchResults = await Promise.allSettled(batchPromises);
+                console.log(`📦 Mini-batch ${this.currentBatch}/${this.totalBatches}: ${batch.length} URLs`);
+                console.log(`💾 Memory before mini-batch: ${this.getMemoryUsage().heapUsed}`);
                 
-                batchResults.forEach((result, index) => {
-                    if (result.status === 'fulfilled') {
-                        results.push(result.value);
-                    } else {
-                        console.error(`❌ Batch error for ${batch[index]}:`, result.reason.message);
-                        results.push({
-                            url: batch[index],
-                            success: false,
-                            error: result.reason.message
-                        });
-                    }
-                });
+                // Process this mini-batch
+                const batchResults = await this.processBatch(batch, batchId);
+                allResults.push(...batchResults);
                 
-                if (i + batchSize < this.pageList.length) {
-                    console.log('⏸️ Waiting between batches...');
-                    await this.delay(5000);
+                // Update progress
+                this.scrapingProgress.completed = Math.min(i + this.config.batchSize, this.pageList.length);
+                
+                // Force garbage collection after each batch
+                if (global.gc) {
+                    global.gc();
+                }
+                
+                console.log(`💾 Memory after mini-batch: ${this.getMemoryUsage().heapUsed}`);
+                
+                // Rest between batches (except the last one)
+                if (i + this.config.batchSize < this.pageList.length && this.isRunning) {
+                    console.log(`⏸️ Resting ${this.config.batchDelay/1000}s before next mini-batch...`);
+                    await this.delay(this.config.batchDelay);
                 }
             }
-
+            
         } catch (error) {
-            console.error('❌ Critical scraping error:', error);
-        } finally {
-            if (browser) {
-                await browser.close();
-                console.log('🔒 Browser closed');
-            }
+            console.error('❌ Batch processing error:', error);
         }
-
-        await this.processResults(results);
         
-        const duration = Math.round((Date.now() - startTime) / 1000);
-        this.lastScrapeTime = new Date().toISOString();
+        // Process all results
+        await this.processResults(allResults, batchId);
         
-        console.log(`✅ Real scraping completed in ${duration} seconds`);
         this.isRunning = false;
+        this.lastScrapeTime = new Date().toISOString();
+        this.scrapingProgress.currentUrl = null;
+        
+        const duration = Math.round((Date.now() - this.scrapingProgress.startTime) / 1000);
+        console.log(`✅ Weekly batch ${batchId} completed in ${duration} seconds`);
+        console.log(`📊 Final results: ${allResults.length} total, ${allResults.filter(r => r.success).length} successful`);
     }
 
-    async scrapePage(browser, url) {
+    async processBatch(urls, batchId) {
+        let browser;
+        const results = [];
+        
+        try {
+            // Launch fresh browser for each mini-batch
+            browser = await this.getBrowser();
+            
+            for (let i = 0; i < urls.length && this.isRunning; i++) {
+                const url = urls[i];
+                this.scrapingProgress.currentUrl = url;
+                
+                console.log(`🔍 Scraping ${this.scrapingProgress.completed + i + 1}/${this.scrapingProgress.total}: ${url}`);
+                
+                let attempts = 0;
+                let result = null;
+                
+                // Retry logic
+                while (attempts < this.config.maxRetries && !result) {
+                    attempts++;
+                    try {
+                        result = await this.scrapePage(browser, url, batchId);
+                        
+                        if (!result.success && attempts < this.config.maxRetries) {
+                            console.log(`⚠️ Attempt ${attempts} failed for ${url}, retrying...`);
+                            await this.delay(5000); // Wait before retry
+                            result = null;
+                        }
+                        
+                    } catch (error) {
+                        console.error(`❌ Attempt ${attempts} error for ${url}:`, error.message);
+                        if (attempts >= this.config.maxRetries) {
+                            result = {
+                                url: url,
+                                success: false,
+                                error: error.message,
+                                timestamp: new Date().toISOString(),
+                                batchId: batchId,
+                                attempts: attempts
+                            };
+                        }
+                    }
+                }
+                
+                results.push(result);
+                
+                if (!result.success) {
+                    this.scrapingProgress.errors++;
+                }
+                
+                // Delay between pages within the batch
+                if (i < urls.length - 1 && this.isRunning) {
+                    await this.delay(this.config.pageDelay);
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Batch browser error:', error);
+        } finally {
+            // ALWAYS close browser after each mini-batch
+            if (browser) {
+                try {
+                    await browser.close();
+                } catch (closeError) {
+                    console.error('❌ Error closing browser:', closeError.message);
+                }
+                browser = null;
+            }
+            
+            // Force garbage collection
+            if (global.gc) {
+                global.gc();
+            }
+        }
+        
+        return results;
+    }
+
+    async getBrowser() {
+        console.log('🚀 Launching ultra-lightweight browser...');
+        
+        const browser = await puppeteer.launch({
+            executablePath: await chromium.executablePath(),
+            args: [
+                ...chromium.args,
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--memory-pressure-off',
+                '--max-old-space-size=128',
+                '--single-process',
+                '--no-zygote',
+                '--disable-web-security',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection'
+            ],
+            headless: chromium.headless,
+            defaultViewport: { width: 1024, height: 768 }
+        });
+        
+        console.log('✅ Browser launched successfully');
+        return browser;
+    }
+
+    async scrapePage(browser, url, batchId) {
         const page = await browser.newPage();
         
         try {
-            console.log(`🔍 Real scraping: ${url}`);
+            console.log(`🔍 Scraping: ${url}`);
             
-            await page.setViewport({ width: 1280, height: 720 });
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
             await page.goto(url, { 
                 waitUntil: 'networkidle0', 
-                timeout: 45000 
+                timeout: 60000 
             });
 
             // Wait for the grid to load
-            await page.waitForSelector('.grid', { timeout: 15000 });
+            await page.waitForSelector('.grid', { timeout: 20000 });
             
             // Additional wait for dynamic content
-            await this.delay(3000);
+            await this.delay(5000);
 
-            // Extract inventory using your proven logic
+            // Extract inventory using the proven logic
             const inventory = await page.evaluate(() => {
                 class ASICSInventoryExtractor {
                     extractInventoryData() {
@@ -429,6 +683,11 @@ class RealASICSScraper {
                         console.log('🎨 Colors found:', colors.length);
                         console.log('📏 Sizes found:', sizes.length);
                         console.log('📊 Quantity matrix rows:', quantityMatrix.length);
+                        
+                        if (colors.length === 0 || sizes.length === 0) {
+                            console.warn('⚠️ Missing colors or sizes data');
+                            return [];
+                        }
                         
                         colors.forEach((color, colorIndex) => {
                             const colorQuantities = quantityMatrix[colorIndex] || [];
@@ -473,7 +732,7 @@ class RealASICSScraper {
                             }
                         });
                         
-                        // Fallback method if no colors found
+                        // Fallback method
                         if (colors.length === 0) {
                             const allElements = document.querySelectorAll('*');
                             const seenCodes = new Set();
@@ -513,12 +772,9 @@ class RealASICSScraper {
                         const quantityMatrix = [];
                         const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
                         
-                        console.log('Found quantity row elements:', quantityRows.length);
-                        
                         quantityRows.forEach((row, index) => {
                             const quantities = [];
                             const cells = row.querySelectorAll('.flex.items-center.justify-center span');
-                            console.log(`Row ${index} has ${cells.length} cells`);
                             
                             cells.forEach(cell => {
                                 const text = cell.textContent.trim();
@@ -527,17 +783,13 @@ class RealASICSScraper {
                                 }
                             });
                             
-                            console.log(`Row ${index} quantities:`, quantities);
-                            
                             if (quantities.length > 0) {
                                 quantityMatrix.push(quantities);
                             }
                         });
                         
-                        // If no matrix found, try alternative approach
+                        // Alternative approach if no matrix found
                         if (quantityMatrix.length === 0) {
-                            console.log('No quantity matrix found, trying alternative approach...');
-                            
                             const potentialQuantityElements = document.querySelectorAll('span, div');
                             const quantityPattern = /^(\d+\+?|0\+?)$/;
                             const foundQuantities = [];
@@ -548,28 +800,25 @@ class RealASICSScraper {
                                     const rect = el.getBoundingClientRect();
                                     foundQuantities.push({
                                         text,
-                                        element: el,
                                         x: rect.left,
                                         y: rect.top
                                     });
                                 }
                             });
                             
-                            console.log('Found potential quantities:', foundQuantities.map(q => q.text));
-                            
-                            // Group quantities by similar Y coordinates (rows)
+                            // Group by Y coordinate (rows)
                             foundQuantities.sort((a, b) => a.y - b.y);
                             
                             let currentRow = [];
                             let lastY = -1;
-                            const tolerance = 10; // pixels
+                            const tolerance = 10;
                             
                             foundQuantities.forEach(q => {
                                 if (lastY === -1 || Math.abs(q.y - lastY) < tolerance) {
                                     currentRow.push(q.text);
                                     lastY = q.y;
                                 } else {
-                                    if (currentRow.length > 5) { // Minimum reasonable number of sizes
+                                    if (currentRow.length > 5) {
                                         quantityMatrix.push([...currentRow]);
                                     }
                                     currentRow = [q.text];
@@ -577,13 +826,11 @@ class RealASICSScraper {
                                 }
                             });
                             
-                            // Add the last row
                             if (currentRow.length > 5) {
                                 quantityMatrix.push(currentRow);
                             }
                         }
                         
-                        console.log('Final quantity matrix:', quantityMatrix);
                         return quantityMatrix;
                     }
 
@@ -602,14 +849,15 @@ class RealASICSScraper {
                 return extractor.extractInventoryData();
             });
 
-            console.log(`✅ ${url}: ${inventory.length} real records extracted`);
+            console.log(`✅ ${url}: ${inventory.length} records extracted`);
             
             return {
                 url,
                 success: true,
                 inventory,
                 recordCount: inventory.length,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                batchId
             };
 
         } catch (error) {
@@ -618,7 +866,8 @@ class RealASICSScraper {
                 url,
                 success: false,
                 error: error.message,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                batchId
             };
         } finally {
             await page.close();
@@ -628,23 +877,9 @@ class RealASICSScraper {
     async scrapeSinglePage(url) {
         let browser;
         try {
-            browser = await puppeteer.launch({
-                headless: 'new',
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-extensions'
-                ]
-            });
-
-            const result = await this.scrapePage(browser, url);
+            browser = await this.getBrowser();
+            const result = await this.scrapePage(browser, url, 'test_' + Date.now());
             return result;
-
         } catch (error) {
             console.error('Single page scrape error:', error);
             return {
@@ -659,7 +894,7 @@ class RealASICSScraper {
         }
     }
 
-    async processResults(results) {
+    async processResults(results, batchId) {
         const allInventory = [];
         const successCount = results.filter(r => r.success).length;
         const errorCount = results.filter(r => !r.success).length;
@@ -669,12 +904,13 @@ class RealASICSScraper {
                 allInventory.push(...result.inventory.map(item => ({
                     ...item,
                     sourceUrl: result.url,
-                    scrapedAt: result.timestamp
+                    scrapedAt: result.timestamp,
+                    batchId: batchId
                 })));
             }
         });
 
-        console.log(`📊 Processing real results: ${allInventory.length} total records`);
+        console.log(`📊 Processing batch ${batchId} results: ${allInventory.length} total records`);
         console.log(`✅ Successful pages: ${successCount}`);
         console.log(`❌ Failed pages: ${errorCount}`);
 
@@ -682,7 +918,8 @@ class RealASICSScraper {
             await this.saveInventoryToDatabase(allInventory);
         }
 
-        await this.logScrapeResults(results.length, successCount, errorCount, allInventory.length);
+        const duration = Math.round((Date.now() - this.scrapingProgress.startTime) / 1000);
+        await this.logScrapeResults(batchId, results.length, successCount, errorCount, allInventory.length, duration);
     }
 
     async saveInventoryToDatabase(inventory) {
@@ -691,27 +928,28 @@ class RealASICSScraper {
         try {
             await client.query('BEGIN');
             
-            console.log('📤 Saving real inventory to database...');
+            console.log('📤 Saving inventory to database...');
             
             for (let item of inventory) {
                 await client.query(`
                     INSERT INTO current_inventory 
-                    (product_name, style_id, color_code, color_name, size_us, quantity, raw_quantity, source_url, scraped_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    (product_name, style_id, color_code, color_name, size_us, quantity, raw_quantity, source_url, scraped_at, batch_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     ON CONFLICT (style_id, color_code, size_us) 
                     DO UPDATE SET 
                         quantity = EXCLUDED.quantity,
                         raw_quantity = EXCLUDED.raw_quantity,
-                        scraped_at = EXCLUDED.scraped_at
+                        scraped_at = EXCLUDED.scraped_at,
+                        batch_id = EXCLUDED.batch_id
                 `, [
                     item.productName, item.styleId, item.colorCode, 
                     item.colorName, item.sizeUS, item.quantity,
-                    item.rawQuantity, item.sourceUrl, item.scrapedAt
+                    item.rawQuantity, item.sourceUrl, item.scrapedAt, item.batchId
                 ]);
             }
             
             await client.query('COMMIT');
-            console.log('✅ Real inventory saved to database');
+            console.log('✅ Inventory saved to database');
             
         } catch (error) {
             await client.query('ROLLBACK');
@@ -722,12 +960,13 @@ class RealASICSScraper {
         }
     }
 
-    async logScrapeResults(totalPages, successCount, errorCount, recordCount) {
+    async logScrapeResults(batchId, totalPages, successCount, errorCount, recordCount, duration) {
         try {
+            const memoryUsage = this.getMemoryUsage();
             await this.db.query(`
-                INSERT INTO scrape_logs (total_pages, success_count, error_count, record_count)
-                VALUES ($1, $2, $3, $4)
-            `, [totalPages, successCount, errorCount, recordCount]);
+                INSERT INTO scrape_logs (batch_id, total_pages, success_count, error_count, record_count, duration_seconds, memory_used_mb)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `, [batchId, totalPages, successCount, errorCount, recordCount, duration, parseInt(memoryUsage.heapUsed.replace('MB', ''))]);
         } catch (error) {
             console.error('Error logging results:', error);
         }
@@ -739,7 +978,7 @@ class RealASICSScraper {
             await client.query('DELETE FROM monitored_pages');
             for (let url of this.pageList) {
                 await client.query(
-                    'INSERT INTO monitored_pages (url, active) VALUES ($1, true) ON CONFLICT (url) DO NOTHING',
+                    'INSERT INTO monitored_pages (url, active) VALUES ($1, true) ON CONFLICT (url) DO UPDATE SET active = true',
                     [url]
                 );
             }
@@ -750,253 +989,667 @@ class RealASICSScraper {
         }
     }
 
+    calculateTimeRemaining() {
+        if (!this.isRunning || this.scrapingProgress.total === 0) return null;
+        
+        const remaining = this.scrapingProgress.total - this.scrapingProgress.completed;
+        const avgTimePerUrl = 15; // seconds (conservative estimate)
+        const avgTimePerBatch = this.config.batchDelay / 1000;
+        const remainingBatches = Math.ceil(remaining / this.config.batchSize);
+        
+        const totalSeconds = (remaining * avgTimePerUrl) + (remainingBatches * avgTimePerBatch);
+        return Math.round(totalSeconds / 60);
+    }
+    
+    getNextScrapeTime() {
+        const now = new Date();
+        const nextSunday = new Date();
+        const daysUntilSunday = (7 - now.getDay()) % 7;
+        
+        if (daysUntilSunday === 0 && now.getHours() < 2) {
+            nextSunday.setHours(2, 0, 0, 0);
+        } else {
+            nextSunday.setDate(now.getDate() + (daysUntilSunday || 7));
+            nextSunday.setHours(2, 0, 0, 0);
+        }
+        
+        return nextSunday.toISOString();
+    }
+
+    getMemoryUsage() {
+        const usage = process.memoryUsage();
+        return {
+            heapUsed: Math.round(usage.heapUsed / 1024 / 1024) + 'MB',
+            heapTotal: Math.round(usage.heapTotal / 1024 / 1024) + 'MB',
+            external: Math.round(usage.external / 1024 / 1024) + 'MB',
+            rss: Math.round(usage.rss / 1024 / 1024) + 'MB'
+        };
+    }
+
     getDashboardHTML() {
         return `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>ASICS Real Auto-Scraper</title>
+            <title>ASICS Weekly Batch Scraper</title>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
                 * { box-sizing: border-box; }
                 body { 
                     font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
-                    margin: 0; padding: 20px; background: #f5f7fa; 
-                    line-height: 1.6;
+                    margin: 0; padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                    line-height: 1.6; min-height: 100vh;
                 }
-                .container { max-width: 1200px; margin: 0 auto; }
+                .container { max-width: 1400px; margin: 0 auto; }
                 .header { 
-                    background: linear-gradient(135deg, #667eea, #764ba2); 
-                    color: white; padding: 30px; border-radius: 10px; 
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    color: white; padding: 40px; border-radius: 15px; 
                     margin-bottom: 30px; text-align: center;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
                 }
-                .header h1 { margin: 0; font-size: 2.5em; }
-                .header p { margin: 10px 0 0 0; opacity: 0.9; }
+                .header h1 { margin: 0; font-size: 2.8em; font-weight: 700; }
+                .header p { margin: 15px 0 0 0; opacity: 0.9; font-size: 1.1em; }
                 .cards { 
                     display: grid; 
                     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); 
-                    gap: 20px; 
+                    gap: 25px; 
                     margin-bottom: 30px;
                 }
                 .card { 
-                    background: white; padding: 25px; border-radius: 8px; 
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+                    background: white; padding: 30px; border-radius: 12px; 
+                    box-shadow: 0 5px 20px rgba(0,0,0,0.1); 
+                    transition: transform 0.2s, box-shadow 0.2s;
+                    border: 1px solid rgba(255,255,255,0.8);
                 }
-                .card h3 { margin: 0 0 20px 0; color: #333; font-size: 1.3em; }
+                .card:hover { 
+                    transform: translateY(-2px); 
+                    box-shadow: 0 8px 25px rgba(0,0,0,0.15); 
+                }
+                .card h3 { 
+                    margin: 0 0 25px 0; color: #2d3748; font-size: 1.4em; 
+                    font-weight: 600; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;
+                }
                 .btn { 
-                    background: #667eea; color: white; border: none; 
-                    padding: 12px 24px; border-radius: 6px; cursor: pointer; 
-                    margin: 5px 5px 5px 0; font-size: 14px; font-weight: 500;
-                    transition: all 0.2s;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    color: white; border: none; 
+                    padding: 14px 28px; border-radius: 8px; cursor: pointer; 
+                    margin: 8px 8px 8px 0; font-size: 14px; font-weight: 600;
+                    transition: all 0.3s; text-transform: uppercase; letter-spacing: 0.5px;
                 }
-                .btn:hover { background: #5a67d8; transform: translateY(-1px); }
-                .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
-                .btn-success { background: #48bb78; }
-                .btn-success:hover { background: #38a169; }
-                .btn-danger { background: #f56565; }
-                .btn-danger:hover { background: #e53e3e; }
-                .btn-test { background: #ed8936; }
-                .btn-test:hover { background: #dd7324; }
-                .status { 
-                    padding: 15px; border-radius: 5px; margin: 15px 0; 
-                    font-weight: 500;
+                .btn:hover { 
+                    transform: translateY(-2px); 
+                    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
                 }
-                .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-                .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-                .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-                .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-                .input-group { display: flex; gap: 10px; margin: 15px 0; }
-                .input-group input { 
-                    flex: 1; padding: 12px; border: 1px solid #ddd; 
-                    border-radius: 4px; font-size: 14px;
+                .btn:disabled { 
+                    background: #cbd5e0; cursor: not-allowed; transform: none; 
+                    box-shadow: none;
                 }
-                .page-list { max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; }
-                .page-item { 
-                    padding: 12px; border-bottom: 1px solid #f0f0f0; 
-                    display: flex; justify-content: space-between; align-items: center;
+                .btn-success { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); }
+                .btn-success:hover { box-shadow: 0 5px 15px rgba(72, 187, 120, 0.4); }
+                .btn-danger { background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); }
+                .btn-danger:hover { box-shadow: 0 5px 15px rgba(245, 101, 101, 0.4); }
+                .btn-warning { background: linear-gradient(135deg, #ed8936 0%, #dd7324 100%); }
+                .btn-warning:hover { box-shadow: 0 5px 15px rgba(237, 137, 54, 0.4); }
+                
+                .progress-container {
+                    background: #f7fafc;
+                    border-radius: 12px;
+                    padding: 20px;
+                    margin: 20px 0;
                 }
-                .page-item:last-child { border-bottom: none; }
-                .page-url { font-size: 12px; color: #666; word-break: break-all; flex: 1; }
-                .logs { max-height: 400px; overflow-y: auto; }
-                .log-item { 
-                    padding: 12px; border-bottom: 1px solid #eee; 
-                    font-size: 13px; background: #f9f9f9; margin: 5px 0; border-radius: 4px;
+                .progress-bar {
+                    background: #e2e8f0;
+                    border-radius: 12px;
+                    height: 24px;
+                    overflow: hidden;
+                    margin: 15px 0;
+                    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
                 }
-                .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+                .progress-fill {
+                    background: linear-gradient(90deg, #48bb78 0%, #38a169 50%, #2f855a 100%);
+                    height: 100%;
+                    transition: width 0.5s ease;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-size: 13px;
+                    font-weight: bold;
+                    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+                }
+                
+                .bulk-upload { 
+                    border: 3px dashed #cbd5e0; 
+                    border-radius: 12px; 
+                    padding: 25px; 
+                    text-align: center; 
+                    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+                    transition: all 0.3s;
+                }
+                .bulk-upload:hover { 
+                    border-color: #667eea; 
+                    background: linear-gradient(135deg, #edf2f7 0%, #e2e8f0 100%);
+                    transform: translateY(-1px);
+                }
+                .bulk-upload textarea {
+                    width: 100%;
+                    height: 140px;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 15px;
+                    font-family: 'Monaco', 'Menlo', monospace;
+                    font-size: 12px;
+                    resize: vertical;
+                    transition: border-color 0.2s;
+                }
+                .bulk-upload textarea:focus {
+                    outline: none;
+                    border-color: #667eea;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+                }
+                
+                .stats-grid { 
+                    display: grid; 
+                    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); 
+                    gap: 20px; 
+                    margin: 25px 0;
+                }
                 .stat-box { 
-                    text-align: center; padding: 20px; background: #f8f9fa; 
-                    border-radius: 6px; border: 1px solid #e9ecef;
+                    text-align: center; 
+                    padding: 25px 15px; 
+                    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
+                    border-radius: 10px; 
+                    border: 1px solid #dee2e6;
+                    transition: transform 0.2s;
                 }
-                .stat-number { font-size: 2em; font-weight: bold; color: #495057; margin: 0; }
-                .stat-label { color: #6c757d; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; }
-                .loading { opacity: 0.6; }
-                .export-btn { background: #28a745; }
-                .export-btn:hover { background: #218838; }
-                .notice { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 6px; margin: 15px 0; }
+                .stat-box:hover {
+                    transform: translateY(-2px);
+                }
+                .stat-number { 
+                    font-size: 2.2em; 
+                    font-weight: bold; 
+                    color: #495057; 
+                    margin: 0; 
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                }
+                .stat-label { 
+                    color: #6c757d; 
+                    font-size: 0.85em; 
+                    text-transform: uppercase; 
+                    letter-spacing: 1px; 
+                    margin-top: 8px;
+                    font-weight: 600;
+                }
+                
+                .status-running { 
+                    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); 
+                    border: 1px solid #ffc107; color: #856404; 
+                }
+                .status-waiting { 
+                    background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%); 
+                    border: 1px solid #17a2b8; color: #0c5460; 
+                }
+                .status-complete { 
+                    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); 
+                    border: 1px solid #28a745; color: #155724; 
+                }
+                .status-error { 
+                    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); 
+                    border: 1px solid #dc3545; color: #721c24; 
+                }
+                .status { 
+                    padding: 18px; border-radius: 8px; margin: 20px 0; 
+                    font-weight: 500; font-size: 14px;
+                }
+                
+                .url-counter {
+                    position: fixed;
+                    top: 25px;
+                    right: 25px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 25px;
+                    font-weight: bold;
+                    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3);
+                    z-index: 1000;
+                    font-size: 14px;
+                }
+                
+                .input-group {
+                    display: flex;
+                    gap: 12px;
+                    margin: 20px 0;
+                }
+                .input-group input {
+                    flex: 1;
+                    padding: 14px;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    transition: border-color 0.2s;
+                }
+                .input-group input:focus {
+                    outline: none;
+                    border-color: #667eea;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+                }
+                
+                .schedule-info {
+                    background: linear-gradient(135deg, #e6fffa 0%, #b2f5ea 100%);
+                    padding: 20px;
+                    border-radius: 10px;
+                    border-left: 4px solid #38b2ac;
+                }
+                
                 @media (max-width: 768px) {
                     .cards { grid-template-columns: 1fr; }
+                    .url-counter { position: static; margin-bottom: 20px; text-align: center; }
                     .input-group { flex-direction: column; }
+                    .header h1 { font-size: 2.2em; }
+                    .header { padding: 25px; }
+                }
+                
+                .animate-pulse {
+                    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+                }
+                
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: .5; }
                 }
             </style>
         </head>
         <body>
+            <div class="url-counter" id="urlCounter">
+                📋 Loading URLs...
+            </div>
+            
             <div class="container">
                 <div class="header">
-                    <h1>🚀 ASICS Real Auto-Scraper</h1>
-                    <p>Live inventory scraping from ASICS B2B portal</p>
-                </div>
-                
-                <div class="notice">
-                    <strong>🎉 REAL SCRAPING ACTIVE:</strong> Now using Puppeteer to extract actual inventory data from ASICS B2B pages!
+                    <h1>📅 ASICS Weekly Batch Scraper</h1>
+                    <p>Intelligent automation for hundreds of product URLs • Optimized for Render Starter Tier</p>
                 </div>
                 
                 <div class="cards">
                     <div class="card">
-                        <h3>🎛️ Controls</h3>
-                        <button class="btn" id="scrapeBtn" onclick="scrapeNow()">🚀 Scrape All Pages</button>
-                        <button class="btn btn-test" onclick="testScrape()">🧪 Test Single Page</button>
-                        <button class="btn" onclick="refreshAll()">🔄 Refresh Status</button>
-                        <button class="btn export-btn" onclick="exportCSV()">📥 Export CSV</button>
-                        <div id="status-message" class="status" style="display: none;"></div>
+                        <h3>🎛️ Batch Control Center</h3>
+                        <button class="btn" id="startBatchBtn" onclick="startWeeklyBatch()">🚀 Start Weekly Batch</button>
+                        <button class="btn btn-warning" onclick="stopBatch()">⏹️ Stop Batch</button>
+                        <button class="btn" onclick="refreshStatus()">🔄 Refresh Status</button>
+                        <div id="batch-status" class="status" style="display: none;"></div>
                     </div>
                     
                     <div class="card">
-                        <h3>📊 Status</h3>
-                        <div id="current-status">Loading...</div>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>📋 Add New Page</h3>
-                        <div class="input-group">
-                            <input type="text" id="newUrl" placeholder="https://b2b.asics.com/products/1013A160" />
-                            <button class="btn btn-success" onclick="addPage()">Add Page</button>
+                        <h3>📊 Live Progress Monitor</h3>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill" style="width: 0%;">0%</div>
+                            </div>
+                            <div id="progress-details">Waiting for batch to start...</div>
                         </div>
-                        <div id="add-status" style="min-height: 20px;"></div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>📈 Batch Statistics</h3>
+                        <div id="batch-stats" class="stats-grid">
+                            <div class="stat-box">
+                                <div class="stat-number" id="totalUrls">0</div>
+                                <div class="stat-label">Total URLs</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-number" id="completedUrls">0</div>
+                                <div class="stat-label">Completed</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-number" id="errorUrls">0</div>
+                                <div class="stat-label">Errors</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-number" id="timeRemaining">--</div>
+                                <div class="stat-label">Min Left</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
                 <div class="cards">
                     <div class="card">
-                        <h3>📝 Monitored Pages</h3>
-                        <div id="page-list" class="page-list">Loading...</div>
+                        <h3>📥 Bulk URL Management</h3>
+                        <div class="bulk-upload">
+                            <p><strong>📋 Paste your URLs here</strong> (one per line):</p>
+                            <textarea id="bulkUrls" 
+                                      placeholder="https://b2b.asics.com/products/1013A160
+https://b2b.asics.com/products/1013A161
+https://b2b.asics.com/products/1013A162
+...
+
+Tip: You can paste hundreds of URLs at once!"></textarea>
+                            <br><br>
+                            <button class="btn btn-success" onclick="uploadBulkUrls()">📤 Upload URLs</button>
+                            <button class="btn btn-danger" onclick="clearUrls()">🗑️ Clear All URLs</button>
+                        </div>
+                        <div id="upload-status"></div>
                     </div>
                     
                     <div class="card">
-                        <h3>📈 Recent Activity</h3>
-                        <div id="recent-logs" class="logs">Loading...</div>
+                        <h3>➕ Quick Add Single URL</h3>
+                        <p>Add individual URLs for testing:</p>
+                        <div class="input-group">
+                            <input type="text" id="singleUrl" 
+                                   placeholder="https://b2b.asics.com/products/1013A160">
+                            <button class="btn btn-success" onclick="addSingleUrl()">Add URL</button>
+                        </div>
+                        <button class="btn btn-warning" onclick="testScrape()">🧪 Test Scrape</button>
+                        <div id="single-add-status"></div>
                     </div>
                 </div>
                 
-                <div class="card">
-                    <h3>📦 Current Inventory</h3>
-                    <div id="inventory-stats" class="stats-grid">Loading...</div>
+                <div class="cards">
+                    <div class="card">
+                        <h3>🕐 Schedule Information</h3>
+                        <div class="schedule-info">
+                            <p><strong>📅 Next Scrape:</strong> <span id="nextScrape">Loading...</span></p>
+                            <p><strong>⏰ Last Scrape:</strong> <span id="lastScrape">Never</span></p>
+                            <p><strong>🔄 Schedule:</strong> Every Sunday at 2:00 AM</p>
+                            <p><strong>⚡ Batch Size:</strong> 5 URLs per mini-batch</p>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>📊 Data Export & Analysis</h3>
+                        <button class="btn btn-success" onclick="exportCSV()">📥 Download CSV</button>
+                        <button class="btn" onclick="viewInventory()">👁️ View Inventory</button>
+                        <button class="btn" onclick="viewLogs()">📜 View Logs</button>
+                        <button class="btn" onclick="checkMemory()">💾 Memory Usage</button>
+                        <p style="margin-top: 20px; color: #666; font-size: 0.9em;">
+                            💡 <strong>Pro tip:</strong> The system automatically handles memory management and 
+                            processes your URLs in small batches to ensure reliability on the starter tier.
+                        </p>
+                    </div>
                 </div>
             </div>
             
             <script>
+                let refreshInterval;
                 let isRefreshing = false;
                 
-                async function refreshAll() {
+                async function refreshStatus() {
                     if (isRefreshing) return;
                     isRefreshing = true;
                     
-                    await Promise.all([
-                        refreshStatus(),
-                        loadPages(),
-                        loadLogs(),
-                        loadInventoryStats()
-                    ]);
-                    
-                    isRefreshing = false;
-                }
-                
-                async function refreshStatus() {
                     try {
-                        const response = await fetch('/api/status');
-                        const status = await response.json();
+                        const [progressRes, statusRes] = await Promise.all([
+                            fetch('/api/progress'),
+                            fetch('/api/batch-status')
+                        ]);
                         
-                        document.getElementById('current-status').innerHTML = \`
-                            <div class="stats-grid">
-                                <div class="stat-box">
-                                    <div class="stat-number">\${status.isScrapingNow ? '🟡' : '🟢'}</div>
-                                    <div class="stat-label">\${status.isScrapingNow ? 'Scraping' : 'Ready'}</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-number">\${status.pages}</div>
-                                    <div class="stat-label">Pages</div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-number">\${Math.floor(status.uptime / 60)}</div>
-                                    <div class="stat-label">Uptime (min)</div>
-                                </div>
-                            </div>
-                            <p style="margin-top: 15px; color: #666; font-size: 0.9em;">
-                                <strong>Version:</strong> \${status.version}<br>
-                                <strong>Last Scrape:</strong> \${status.lastScrape ? new Date(status.lastScrape).toLocaleString() : 'Never'}
-                            </p>
-                        \`;
+                        const progress = await progressRes.json();
+                        const status = await statusRes.json();
                         
-                        // Update scrape button
-                        const btn = document.getElementById('scrapeBtn');
-                        if (status.isScrapingNow) {
-                            btn.textContent = '⏳ Scraping...';
-                            btn.disabled = true;
-                        } else {
-                            btn.textContent = '🚀 Scrape All Pages';
-                            btn.disabled = false;
-                        }
+                        updateProgress(status);
+                        updateScheduleInfo(progress);
+                        updateUrlCount();
                         
                     } catch (error) {
-                        console.error('Status error:', error);
-                        document.getElementById('current-status').innerHTML = '<p class="error">Error loading status</p>';
+                        console.error('Status refresh error:', error);
+                    } finally {
+                        isRefreshing = false;
                     }
                 }
                 
-                async function scrapeNow() {
-                    const btn = document.getElementById('scrapeBtn');
-                    const statusDiv = document.getElementById('status-message');
+                function updateProgress(status) {
+                    const progressFill = document.getElementById('progressFill');
+                    const progressDetails = document.getElementById('progress-details');
+                    const batchStatusDiv = document.getElementById('batch-status');
                     
-                    btn.disabled = true;
-                    btn.textContent = 'Starting...';
+                    // Update progress bar
+                    progressFill.style.width = status.percentage + '%';
+                    progressFill.textContent = status.percentage + '%';
                     
-                    try {
-                        const response = await fetch('/api/scrape-now', { method: 'POST' });
-                        const result = await response.json();
+                    // Update details
+                    if (status.status === 'Running Weekly Batch') {
+                        progressDetails.innerHTML = \`
+                            <div style="text-align: left; font-size: 13px; line-height: 1.6;">
+                                <strong>🔍 Current URL:</strong> \${status.currentUrl ? status.currentUrl.split('/').pop() : 'Preparing...'}<br>
+                                <strong>📊 Progress:</strong> \${status.completed}/\${status.total} URLs (\${status.percentage}%)<br>
+                                <strong>🔥 Mini-batch:</strong> \${status.currentBatch}/\${status.totalBatches}<br>
+                                <strong>❌ Errors:</strong> \${status.errors}<br>
+                                <strong>⏱️ Est. Time:</strong> \${status.estimatedMinutesRemaining || '--'} minutes
+                            </div>
+                        \`;
                         
-                        statusDiv.style.display = 'block';
-                        statusDiv.className = \`status \${result.success ? 'success' : 'error'}\`;
-                        statusDiv.textContent = result.message;
+                        batchStatusDiv.style.display = 'block';
+                        batchStatusDiv.className = 'status status-running';
+                        batchStatusDiv.innerHTML = '🔄 <strong>Weekly batch in progress...</strong><br>Processing URLs in optimized mini-batches';
                         
-                        if (result.success) {
-                            setTimeout(refreshAll, 2000);
-                            setTimeout(refreshAll, 15000); // Check again in 15s
+                        // Auto-refresh while running
+                        if (!refreshInterval) {
+                            refreshInterval = setInterval(refreshStatus, 5000); // Every 5 seconds
                         }
                         
+                        // Add pulse animation to progress bar
+                        progressFill.classList.add('animate-pulse');
+                        
+                    } else {
+                        progressDetails.innerHTML = \`
+                            <div style="text-align: center; color: #666; font-style: italic;">
+                                \${status.status}
+                            </div>
+                        \`;
+                        batchStatusDiv.style.display = 'none';
+                        
+                        // Stop auto-refresh
+                        if (refreshInterval) {
+                            clearInterval(refreshInterval);
+                            refreshInterval = null;
+                        }
+                        
+                        // Remove pulse animation
+                        progressFill.classList.remove('animate-pulse');
+                    }
+                    
+                    // Update stats with animation
+                    animateStatUpdate('totalUrls', status.total || 0);
+                    animateStatUpdate('completedUrls', status.completed || 0);
+                    animateStatUpdate('errorUrls', status.errors || 0);
+                    animateStatUpdate('timeRemaining', status.estimatedMinutesRemaining || '--');
+                }
+                
+                function animateStatUpdate(elementId, newValue) {
+                    const element = document.getElementById(elementId);
+                    const currentValue = element.textContent;
+                    
+                    if (currentValue !== newValue.toString()) {
+                        element.style.transform = 'scale(1.1)';
+                        element.style.transition = 'transform 0.2s';
+                        
+                        setTimeout(() => {
+                            element.textContent = newValue;
+                            element.style.transform = 'scale(1)';
+                        }, 100);
+                    }
+                }
+                
+                function updateScheduleInfo(progress) {
+                    document.getElementById('nextScrape').textContent = 
+                        progress.nextScrape ? new Date(progress.nextScrape).toLocaleString() : 'Unknown';
+                    document.getElementById('lastScrape').textContent = 
+                        progress.lastScrape ? new Date(progress.lastScrape).toLocaleString() : 'Never';
+                }
+                
+                async function updateUrlCount() {
+                    try {
+                        const response = await fetch('/api/pages');
+                        const data = await response.json();
+                        const count = data.pages.length;
+                        document.getElementById('urlCounter').innerHTML = \`📋 \${count} URLs loaded\`;
+                        
+                        // Update counter color based on count
+                        const counter = document.getElementById('urlCounter');
+                        if (count === 0) {
+                            counter.style.background = 'linear-gradient(135deg, #f56565 0%, #e53e3e 100%)';
+                        } else if (count < 10) {
+                            counter.style.background = 'linear-gradient(135deg, #ed8936 0%, #dd7324 100%)';
+                        } else {
+                            counter.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                        }
                     } catch (error) {
-                        statusDiv.style.display = 'block';
-                        statusDiv.className = 'status error';
-                        statusDiv.textContent = 'Error starting scrape: ' + error.message;
+                        console.error('URL count error:', error);
+                        document.getElementById('urlCounter').textContent = '📋 Error loading';
+                    }
+                }
+                
+                async function startWeeklyBatch() {
+                    const btn = document.getElementById('startBatchBtn');
+                    const originalText = btn.textContent;
+                    
+                    btn.disabled = true;
+                    btn.textContent = '🚀 Starting...';
+                    btn.classList.add('animate-pulse');
+                    
+                    try {
+                        const response = await fetch('/api/start-batch', { method: 'POST' });
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            showNotification('✅ Weekly batch started successfully!', 'success');
+                            setTimeout(refreshStatus, 2000);
+                        } else {
+                            showNotification('❌ Error: ' + result.message, 'error');
+                        }
+                    } catch (error) {
+                        showNotification('❌ Failed to start batch: ' + error.message, 'error');
                     } finally {
                         setTimeout(() => {
                             btn.disabled = false;
-                            btn.textContent = '🚀 Scrape All Pages';
+                            btn.textContent = originalText;
+                            btn.classList.remove('animate-pulse');
                         }, 3000);
                     }
                 }
                 
-                async function testScrape() {
-                    const url = document.getElementById('newUrl').value.trim();
-                    
-                    if (!url || !url.includes('b2b.asics.com/products/')) {
-                        alert('Please enter a valid ASICS B2B product URL');
+                async function stopBatch() {
+                    if (!confirm('Are you sure you want to stop the current batch? It will complete the current mini-batch before stopping.')) {
                         return;
                     }
                     
-                    const statusDiv = document.getElementById('status-message');
-                    statusDiv.style.display = 'block';
-                    statusDiv.className = 'status info';
-                    statusDiv.textContent = 'Testing real scrape... this may take 30-60 seconds';
+                    try {
+                        const response = await fetch('/api/stop-batch', { method: 'POST' });
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            showNotification('⏹️ Batch stop requested', 'warning');
+                        } else {
+                            showNotification('❌ ' + result.message, 'error');
+                        }
+                    } catch (error) {
+                        showNotification('❌ Error stopping batch: ' + error.message, 'error');
+                    }
+                }
+                
+                async function uploadBulkUrls() {
+                    const textarea = document.getElementById('bulkUrls');
+                    const rawUrls = textarea.value.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.length > 0);
+                    
+                    if (rawUrls.length === 0) {
+                        showNotification('⚠️ Please paste some URLs first', 'warning');
+                        return;
+                    }
+                    
+                    const statusDiv = document.getElementById('upload-status');
+                    statusDiv.innerHTML = '<div class="status status-running">📤 Processing URLs...</div>';
+                    
+                    try {
+                        const response = await fetch('/api/bulk-add', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ urls: rawUrls })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            statusDiv.innerHTML = \`
+                                <div class="status status-complete">
+                                    <strong>✅ Upload Complete!</strong><br>
+                                    Added: \${result.added} new URLs<br>
+                                    Duplicates: \${result.duplicates}<br>
+                                    Invalid: \${result.invalid}<br>
+                                    Total URLs: \${result.total}
+                                </div>
+                            \`;
+                            textarea.value = '';
+                            updateUrlCount();
+                            showNotification(\`✅ Added \${result.added} new URLs!\`, 'success');
+                        } else {
+                            statusDiv.innerHTML = \`<div class="status status-error">❌ \${result.message}</div>\`;
+                        }
+                    } catch (error) {
+                        statusDiv.innerHTML = \`<div class="status status-error">❌ Upload failed: \${error.message}</div>\`;
+                    }
+                    
+                    // Clear status after 10 seconds
+                    setTimeout(() => {
+                        statusDiv.innerHTML = '';
+                    }, 10000);
+                }
+                
+                async function addSingleUrl() {
+                    const input = document.getElementById('singleUrl');
+                    const url = input.value.trim();
+                    
+                    if (!url) {
+                        showNotification('⚠️ Please enter a URL', 'warning');
+                        return;
+                    }
+                    
+                    try {
+                        const response = await fetch('/api/pages', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        
+                        const result = await response.json();
+                        const statusDiv = document.getElementById('single-add-status');
+                        
+                        if (result.success) {
+                            statusDiv.innerHTML = \`<div class="status status-complete">✅ \${result.message}</div>\`;
+                            input.value = '';
+                            updateUrlCount();
+                            showNotification('✅ URL added successfully!', 'success');
+                        } else {
+                            statusDiv.innerHTML = \`<div class="status status-error">❌ \${result.message}</div>\`;
+                        }
+                        
+                        setTimeout(() => {
+                            statusDiv.innerHTML = '';
+                        }, 5000);
+                        
+                    } catch (error) {
+                        console.error('Add URL error:', error);
+                        showNotification('❌ Error adding URL: ' + error.message, 'error');
+                    }
+                }
+                
+                async function testScrape() {
+                    const input = document.getElementById('singleUrl');
+                    const url = input.value.trim();
+                    
+                    if (!url || !url.includes('b2b.asics.com/products/')) {
+                        showNotification('⚠️ Please enter a valid ASICS B2B product URL', 'warning');
+                        return;
+                    }
+                    
+                    const statusDiv = document.getElementById('single-add-status');
+                    statusDiv.innerHTML = '<div class="status status-running">🧪 Testing scrape... this may take 30-60 seconds</div>';
                     
                     try {
                         const response = await fetch('/api/test-scrape', {
@@ -1007,199 +1660,185 @@ class RealASICSScraper {
                         
                         const result = await response.json();
                         
-                        statusDiv.className = \`status \${result.success ? 'success' : 'error'}\`;
-                        statusDiv.textContent = result.message;
-                        
                         if (result.success) {
-                            setTimeout(refreshAll, 1000);
-                        }
-                        
-                    } catch (error) {
-                        statusDiv.className = 'status error';
-                        statusDiv.textContent = 'Test scrape failed: ' + error.message;
-                        console.error('Test scrape error:', error);
-                    }
-                }
-                
-                async function addPage() {
-                    const input = document.getElementById('newUrl');
-                    const statusDiv = document.getElementById('add-status');
-                    const url = input.value.trim();
-                    
-                    if (!url) {
-                        showAddStatus('Please enter a URL', 'warning');
-                        return;
-                    }
-                    
-                    if (!url.includes('b2b.asics.com/products/')) {
-                        showAddStatus('Please enter a valid ASICS B2B product URL', 'error');
-                        return;
-                    }
-                    
-                    try {
-                        const response = await fetch('/api/pages', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url })
-                        });
-                        
-                        const result = await response.json();
-                        
-                        if (result.success) {
-                            input.value = '';
-                            showAddStatus(result.message, 'success');
-                            loadPages();
-                            refreshStatus();
-                        } else {
-                            showAddStatus(result.message, 'error');
-                        }
-                        
-                    } catch (error) {
-                        showAddStatus('Error adding page: ' + error.message, 'error');
-                    }
-                }
-                
-                function showAddStatus(message, type) {
-                    const statusDiv = document.getElementById('add-status');
-                    statusDiv.innerHTML = \`<div class="status \${type}" style="margin: 10px 0;">\${message}</div>\`;
-                    setTimeout(() => {
-                        statusDiv.innerHTML = '';
-                    }, 5000);
-                }
-                
-                async function removePage(url) {
-                    if (!confirm('Remove this page from monitoring?')) return;
-                    
-                    try {
-                        const response = await fetch('/api/pages', {
-                            method: 'DELETE',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url })
-                        });
-                        
-                        const result = await response.json();
-                        if (result.success) {
-                            loadPages();
-                            refreshStatus();
-                        }
-                    } catch (error) {
-                        console.error('Remove error:', error);
-                    }
-                }
-                
-                async function loadPages() {
-                    try {
-                        const response = await fetch('/api/pages');
-                        const data = await response.json();
-                        
-                        const pageListDiv = document.getElementById('page-list');
-                        
-                        if (data.pages.length === 0) {
-                            pageListDiv.innerHTML = '<p style="padding: 20px; text-align: center; color: #666;">No pages added yet</p>';
-                            return;
-                        }
-                        
-                        pageListDiv.innerHTML = data.pages.map(url => \`
-                            <div class="page-item">
-                                <div class="page-url">\${url.replace('https://b2b.asics.com/products/', '')}</div>
-                                <div>
-                                    <button class="btn btn-test" onclick="testSingleUrl('\${url}')" style="padding: 4px 8px; font-size: 11px; margin-right: 5px;">Test</button>
-                                    <button class="btn btn-danger" onclick="removePage('\${url}')" style="padding: 4px 8px; font-size: 11px;">Remove</button>
+                            statusDiv.innerHTML = \`
+                                <div class="status status-complete">
+                                    <strong>✅ Test Successful!</strong><br>
+                                    \${result.message}
                                 </div>
-                            </div>
-                        \`).join('');
-                        
-                    } catch (error) {
-                        console.error('Pages error:', error);
-                        document.getElementById('page-list').innerHTML = '<p class="error">Error loading pages</p>';
-                    }
-                }
-                
-                async function testSingleUrl(url) {
-                    document.getElementById('newUrl').value = url;
-                    await testScrape();
-                }
-                
-                async function loadLogs() {
-                    try {
-                        const response = await fetch('/api/logs');
-                        const data = await response.json();
-                        
-                        const logsDiv = document.getElementById('recent-logs');
-                        
-                        if (data.logs.length === 0) {
-                            logsDiv.innerHTML = '<p style="padding: 20px; text-align: center; color: #666;">No recent activity</p>';
-                            return;
+                            \`;
+                            showNotification('✅ Test scrape successful!', 'success');
+                            setTimeout(refreshStatus, 1000);
+                        } else {
+                            statusDiv.innerHTML = \`<div class="status status-error">❌ \${result.message}</div>\`;
                         }
                         
-                        logsDiv.innerHTML = data.logs.map(log => \`
-                            <div class="log-item">
-                                <strong>\${new Date(log.created_at).toLocaleString()}</strong><br>
-                                📊 \${log.success_count}/\${log.total_pages} pages successful • 
-                                📦 \${log.record_count} records • 
-                                ❌ \${log.error_count} errors
-                            </div>
-                        \`).join('');
-                        
                     } catch (error) {
-                        console.error('Logs error:', error);
-                        document.getElementById('recent-logs').innerHTML = '<p class="error">Error loading logs</p>';
-                    }
-                }
-                
-                async function loadInventoryStats() {
-                    try {
-                        const response = await fetch('/api/inventory');
-                        const data = await response.json();
-                        
-                        const statsDiv = document.getElementById('inventory-stats');
-                        
-                        if (data.inventory.length === 0) {
-                            statsDiv.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #666;">No inventory data yet - try testing a scrape!</p>';
-                            return;
-                        }
-                        
-                        const totalProducts = data.inventory.length;
-                        const totalQuantity = data.inventory.reduce((sum, item) => sum + (parseInt(item.total_quantity) || 0), 0);
-                        const latestUpdate = data.inventory[0]?.last_updated;
-                        
-                        statsDiv.innerHTML = \`
-                            <div class="stat-box">
-                                <div class="stat-number">\${totalProducts}</div>
-                                <div class="stat-label">Products</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number">\${totalQuantity}</div>
-                                <div class="stat-label">Total Units</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-number">\${latestUpdate ? new Date(latestUpdate).toLocaleDateString() : 'Never'}</div>
-                                <div class="stat-label">Last Updated</div>
-                            </div>
-                        \`;
-                        
-                    } catch (error) {
-                        console.error('Inventory error:', error);
-                        document.getElementById('inventory-stats').innerHTML = '<p class="error">Error loading inventory</p>';
+                        statusDiv.innerHTML = \`<div class="status status-error">❌ Test failed: \${error.message}</div>\`;
+                        console.error('Test scrape error:', error);
                     }
                 }
                 
                 function exportCSV() {
                     window.open('/api/export/csv', '_blank');
+                    showNotification('📥 CSV export started', 'info');
                 }
                 
-                // Enter key support for adding pages
-                document.getElementById('newUrl').addEventListener('keypress', function(e) {
+                function viewInventory() {
+                    window.open('/api/inventory', '_blank');
+                }
+                
+                function viewLogs() {
+                    window.open('/api/logs', '_blank');
+                }
+                
+                async function checkMemory() {
+                    try {
+                        const response = await fetch('/api/memory');
+                        const memory = await response.json();
+                        
+                        showNotification(\`
+                            💾 Memory Usage:<br>
+                            Heap: \${memory.heapUsed} / \${memory.heapTotal}<br>
+                            RSS: \${memory.rss}
+                        \`, 'info');
+                    } catch (error) {
+                        showNotification('❌ Error checking memory', 'error');
+                    }
+                }
+                
+                async function clearUrls() {
+                    if (!confirm('⚠️ Are you sure you want to clear ALL URLs? This cannot be undone!')) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await fetch('/api/clear-all-pages', { method: 'POST' });
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            updateUrlCount();
+                            showNotification('🗑️ All URLs cleared', 'success');
+                        } else {
+                            showNotification('❌ Error clearing URLs: ' + result.message, 'error');
+                        }
+                    } catch (error) {
+                        showNotification('❌ Error clearing URLs: ' + error.message, 'error');
+                    }
+                }
+                
+                // Notification system
+                function showNotification(message, type = 'info') {
+                    const notification = document.createElement('div');
+                    notification.innerHTML = message;
+                    notification.style.cssText = \`
+                        position: fixed;
+                        top: 80px;
+                        right: 25px;
+                        padding: 15px 20px;
+                        border-radius: 8px;
+                        color: white;
+                        font-weight: 500;
+                        z-index: 10000;
+                        max-width: 300px;
+                        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+                        transform: translateX(100%);
+                        transition: transform 0.3s ease;
+                    \`;
+                    
+                    // Set background based on type
+                    switch(type) {
+                        case 'success':
+                            notification.style.background = 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)';
+                            break;
+                        case 'error':
+                            notification.style.background = 'linear-gradient(135deg, #f56565 0%, #e53e3e 100%)';
+                            break;
+                        case 'warning':
+                            notification.style.background = 'linear-gradient(135deg, #ed8936 0%, #dd7324 100%)';
+                            break;
+                        default:
+                            notification.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    }
+                    
+                    document.body.appendChild(notification);
+                    
+                    // Slide in
+                    setTimeout(() => {
+                        notification.style.transform = 'translateX(0)';
+                    }, 100);
+                    
+                    // Slide out and remove
+                    setTimeout(() => {
+                        notification.style.transform = 'translateX(100%)';
+                        setTimeout(() => {
+                            if (notification.parentNode) {
+                                notification.parentNode.removeChild(notification);
+                            }
+                        }, 300);
+                    }, 4000);
+                }
+                
+                // Enter key support
+                document.getElementById('singleUrl').addEventListener('keypress', function(e) {
                     if (e.key === 'Enter') {
-                        addPage();
+                        addSingleUrl();
                     }
                 });
                 
-                // Initial load
-                refreshAll();
+                // Keyboard shortcuts
+                document.addEventListener('keydown', function(e) {
+                    if (e.ctrlKey || e.metaKey) {
+                        switch(e.key) {
+                            case 'r':
+                                e.preventDefault();
+                                refreshStatus();
+                                break;
+                            case 's':
+                                e.preventDefault();
+                                if (!document.getElementById('startBatchBtn').disabled) {
+                                    startWeeklyBatch();
+                                }
+                                break;
+                        }
+                    }
+                });
                 
-                // Auto-refresh every 30 seconds
-                setInterval(refreshStatus, 30000);
+                // Auto-save textarea content to localStorage (fallback)
+                const textarea = document.getElementById('bulkUrls');
+                textarea.addEventListener('input', function() {
+                    try {
+                        localStorage.setItem('bulkUrls', this.value);
+                    } catch(e) {
+                        // Ignore localStorage errors
+                    }
+                });
+                
+                // Restore textarea content
+                try {
+                    const saved = localStorage.getItem('bulkUrls');
+                    if (saved) {
+                        textarea.value = saved;
+                    }
+                } catch(e) {
+                    // Ignore localStorage errors
+                }
+                
+                // Initial load
+                console.log('🚀 ASICS Weekly Batch Scraper Dashboard Loaded');
+                refreshStatus();
+                
+                // Periodic refresh (every 30 seconds when not actively running)
+                setInterval(() => {
+                    if (!refreshInterval) { // Only if not already auto-refreshing
+                        refreshStatus();
+                    }
+                }, 30000);
+                
+                // Show welcome message
+                setTimeout(() => {
+                    showNotification('🎉 Dashboard ready! Add your URLs and start batching.', 'success');
+                }, 1000);
             </script>
         </body>
         </html>`;
@@ -1211,18 +1850,34 @@ class RealASICSScraper {
 
     start() {
         const port = process.env.PORT || 3000;
-        this.app.listen(port, '0.0.0.0', async () => {
-            console.log(`🚀 Real ASICS Auto-Scraper running on port ${port}`);
-            console.log(`📊 Dashboard: https://asics-auto-scraper.onrender.com`);
+        this.app.listen(port, '0.0.0.0', () => {
+            console.log(`🚀 ASICS Weekly Batch Scraper running on port ${port}`);
+            console.log(`📊 Dashboard: http://localhost:${port}`);
+            console.log(`💾 Memory usage: ${JSON.stringify(this.getMemoryUsage())}`);
+            console.log(`📅 Next scheduled run: ${this.getNextScrapeTime()}`);
         });
     }
 }
 
-// Start the real scraper
-const scraper = new RealASICSScraper();
+// Start the scraper
+const scraper = new ASICSWeeklyBatchScraper();
 scraper.start();
 
-process.on('SIGTERM', () => {
-    console.log('🛑 Shutting down gracefully');
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+    console.log('🛑 Shutting down gracefully...');
+    if (scraper.db) {
+        await scraper.db.end();
+    }
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('🛑 Received SIGINT, shutting down gracefully...');
+    if (scraper.db) {
+        await scraper.db.end();
+    }
+    process.exit(0);
+});
     process.exit(0);
 });
