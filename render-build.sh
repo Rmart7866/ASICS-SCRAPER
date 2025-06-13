@@ -6,6 +6,12 @@ echo "📊 Available memory: $(free -h | grep Mem: | awk '{print $2}' || echo 'U
 
 # Install dependencies with memory optimization
 echo "📦 Installing dependencies..."
+# Check if package-lock.json exists, if not create it
+if [ ! -f "package-lock.json" ]; then
+    echo "📝 Creating package-lock.json..."
+    npm install --package-lock-only
+fi
+
 npm ci --only=production --no-audit --no-fund --prefer-offline
 
 # Verify critical dependencies
