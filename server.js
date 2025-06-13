@@ -960,47 +960,172 @@ class ASICSWeeklyBatchScraper {
         const page = await browser.newPage();
         
         try {
-            console.log('🔐 Logging into ASICS B2B portal...');
+            console.log('🔐 Attempting to access ASICS B2B portal...');
             
             // Set user agent to appear more like a real browser
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
-            // Navigate to login page
-            await page.goto('https://b2b.asics.com/login', { 
+            // Navigate to the main B2B site first
+            await page.goto('https://b2b.asics.com', { 
                 waitUntil: 'networkidle0', 
                 timeout: 60000 
             });
             
             console.log('📋 Current page URL:', page.url());
+            console.log('📋 Page title:', await page.title());
             
-            // Wait for login form to load
-            await page.waitForSelector('input[type="email"], input[name="email"], #email, [data-testid="email"]', { timeout: 30000 });
+            // Debug: Check what's actually on the page
+            console.log('🔍 Debugging page content...');
+            
+            const pageContent = await page.evaluate(() => {
+                return {
+                    title: document.title,
+                    url: window.location.href,
+                    bodyText: document.body.innerText.substring(0, 500),
+                    forms: Array.from(document.querySelectorAll('form')).length,
+                    inputs: Array.from(document.querySelectorAll('input')).map(input => ({
+                        type: input.type,
+                        name: input.name,
+                        id: input.id,
+                        placeholder: input.placeholder,
+                        className: input.className
+                    })),
+                    buttons: Array.from(document.querySelectorAll('button, input[type="submit"]')).map(btn => ({
+                        text: btn.textContent || btn.value,
+                        type: btn.type,
+                        className: btn.className
+                    })),
+                    hasLoginElements: !!(
+                        document.querySelector('input[type="email"]') ||
+                        document.querySelector('input[type="password"]') ||
+                        document.querySelector('input[name*="user"]') ||
+                        document.querySelector('input[name*="email"]') ||
+                        document.querySelector('input[name*="login"]')
+                    )
+                };
+            });
+            
+            console.log('📊 Page Analysis:', JSON.stringify(pageContent, null, 2));
+            
+            // Check if we're already on a login page or need to find login
+            if (!pageContent.hasLoginElements) {
+                console.log('🔍 No login elements found, looking for login link...');
+                
+                // Look for login links
+                const loginLinks = await page.evaluate(() => {
+                    const links = Array.from(document.querySelectorAll('a'));
+                    return links.filter(link => 
+                        link.textContent.toLowerCase().includes('login') ||
+                        link.textContent.toLowerCase().includes('sign in') ||
+                        link.href.includes('login') ||
+                        link.href.includes('signin') ||
+                        link.href.includes('auth')
+                    ).map(link => ({
+                        text: link.textContent.trim(),
+                        href: link.href
+                    }));
+                });
+                
+                console.log('🔗 Found login links:', loginLinks);
+                
+                if (loginLinks.length > 0) {
+                    console.log('🔗 Clicking login link:', loginLinks[0].href);
+                    await Promise.all([
+                        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
+                        page.click(`a[href*="login"], a[href*="signin"], a:contains("Login"), a:contains("Sign In")`)
+                    ]);
+                } else {
+                    // Try navigating to common login paths
+                    const loginPaths = [
+                        'https://b2b.asics.com/login',
+                        'https://b2b.asics.com/signin',
+                        'https://b2b.asics.com/auth/login',
+                        'https://b2b.asics.com/account/login'
+                    ];
+                    
+                    for (let loginPath of loginPaths) {
+                        try {
+                            console.log(`🔍 Trying login path: ${loginPath}`);
+                            await page.goto(loginPath, { waitUntil: 'networkidle0', timeout: 30000 });
+                            
+                            const hasLogin = await page.evaluate(() => {
+                                return !!(
+                                    document.querySelector('input[type="email"]') ||
+                                    document.querySelector('input[type="password"]') ||
+                                    document.querySelector('input[name*="user"]') ||
+                                    document.querySelector('input[name*="email"]')
+                                );
+                            });
+                            
+                            if (hasLogin) {
+                                console.log('✅ Found login page at:', loginPath);
+                                break;
+                            }
+                        } catch (e) {
+                            console.log(`❌ Login path ${loginPath} failed:`, e.message);
+                        }
+                    }
+                }
+            }
+            
+            // Wait a bit for any dynamic content to load
+            await this.delay(3000);
+            
+            // Get updated page info
+            const loginPageContent = await page.evaluate(() => {
+                return {
+                    url: window.location.href,
+                    title: document.title,
+                    allInputs: Array.from(document.querySelectorAll('input')).map(input => ({
+                        type: input.type,
+                        name: input.name,
+                        id: input.id,
+                        placeholder: input.placeholder,
+                        className: input.className,
+                        visible: input.offsetWidth > 0 && input.offsetHeight > 0
+                    })),
+                    bodyText: document.body.innerText.substring(0, 300)
+                };
+            });
+            
+            console.log('📊 Login Page Analysis:', JSON.stringify(loginPageContent, null, 2));
             
             // Check if we have credentials
             if (!process.env.ASICS_USERNAME || !process.env.ASICS_PASSWORD) {
                 throw new Error('ASICS credentials not found. Please set ASICS_USERNAME and ASICS_PASSWORD environment variables.');
             }
             
-            console.log('✍️ Filling login form...');
+            // Try to find and fill login form
+            console.log('✍️ Attempting to fill login form...');
             
-            // Try different selectors for email field
+            // Find email/username field
             const emailSelectors = [
                 'input[type="email"]',
                 'input[name="email"]',
                 'input[name="username"]',
+                'input[name="user"]',
+                'input[name="login"]',
                 '#email',
                 '#username',
+                '#user',
+                '#login',
                 '[data-testid="email"]',
-                '[data-testid="username"]'
+                '[data-testid="username"]',
+                'input[placeholder*="email" i]',
+                'input[placeholder*="username" i]'
             ];
             
             let emailField = null;
             for (let selector of emailSelectors) {
                 try {
-                    emailField = await page.$(selector);
-                    if (emailField) {
-                        console.log(`📧 Found email field with selector: ${selector}`);
-                        break;
+                    const field = await page.$(selector);
+                    if (field) {
+                        const isVisible = await field.evaluate(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                        if (isVisible) {
+                            console.log(`📧 Found email field with selector: ${selector}`);
+                            emailField = field;
+                            break;
+                        }
                     }
                 } catch (e) {
                     // Continue to next selector
@@ -1008,13 +1133,42 @@ class ASICSWeeklyBatchScraper {
             }
             
             if (!emailField) {
-                throw new Error('Could not find email input field on login page');
+                // Try to find any visible input that might be the email field
+                const allInputs = await page.$('input');
+                for (let input of allInputs) {
+                    const inputInfo = await input.evaluate(el => ({
+                        type: el.type,
+                        name: el.name,
+                        id: el.id,
+                        placeholder: el.placeholder,
+                        visible: el.offsetWidth > 0 && el.offsetHeight > 0
+                    }));
+                    
+                    if (inputInfo.visible && (
+                        inputInfo.type === 'email' ||
+                        inputInfo.type === 'text' ||
+                        inputInfo.name?.toLowerCase().includes('email') ||
+                        inputInfo.name?.toLowerCase().includes('user') ||
+                        inputInfo.placeholder?.toLowerCase().includes('email') ||
+                        inputInfo.placeholder?.toLowerCase().includes('user')
+                    )) {
+                        console.log(`📧 Found potential email field:`, inputInfo);
+                        emailField = input;
+                        break;
+                    }
+                }
+            }
+            
+            if (!emailField) {
+                throw new Error('Could not find email/username input field on login page');
             }
             
             // Fill email
+            await emailField.click();
             await emailField.type(process.env.ASICS_USERNAME, { delay: 100 });
+            console.log('📧 Email field filled');
             
-            // Try different selectors for password field
+            // Find password field
             const passwordSelectors = [
                 'input[type="password"]',
                 'input[name="password"]',
@@ -1025,10 +1179,14 @@ class ASICSWeeklyBatchScraper {
             let passwordField = null;
             for (let selector of passwordSelectors) {
                 try {
-                    passwordField = await page.$(selector);
-                    if (passwordField) {
-                        console.log(`🔒 Found password field with selector: ${selector}`);
-                        break;
+                    const field = await page.$(selector);
+                    if (field) {
+                        const isVisible = await field.evaluate(el => el.offsetWidth > 0 && el.offsetHeight > 0);
+                        if (isVisible) {
+                            console.log(`🔒 Found password field with selector: ${selector}`);
+                            passwordField = field;
+                            break;
+                        }
                     }
                 } catch (e) {
                     // Continue to next selector
@@ -1040,30 +1198,30 @@ class ASICSWeeklyBatchScraper {
             }
             
             // Fill password
+            await passwordField.click();
             await passwordField.type(process.env.ASICS_PASSWORD, { delay: 100 });
+            console.log('🔒 Password field filled');
             
             // Find and click login button
-            const loginButtonSelectors = [
-                'button[type="submit"]',
-                'input[type="submit"]',
-                '.login-button',
-                '.submit-button',
-                'button:contains("Login")',
-                'button:contains("Sign In")',
-                '[data-testid="login-button"]',
-                '[data-testid="submit-button"]'
-            ];
-            
+            const loginButtons = await page.$('button, input[type="submit"]');
             let loginButton = null;
-            for (let selector of loginButtonSelectors) {
-                try {
-                    loginButton = await page.$(selector);
-                    if (loginButton) {
-                        console.log(`🔘 Found login button with selector: ${selector}`);
-                        break;
-                    }
-                } catch (e) {
-                    // Continue to next selector
+            
+            for (let button of loginButtons) {
+                const buttonInfo = await button.evaluate(el => ({
+                    text: el.textContent || el.value,
+                    type: el.type,
+                    visible: el.offsetWidth > 0 && el.offsetHeight > 0
+                }));
+                
+                if (buttonInfo.visible && (
+                    buttonInfo.text?.toLowerCase().includes('login') ||
+                    buttonInfo.text?.toLowerCase().includes('sign in') ||
+                    buttonInfo.text?.toLowerCase().includes('submit') ||
+                    buttonInfo.type === 'submit'
+                )) {
+                    console.log(`🔘 Found login button:`, buttonInfo);
+                    loginButton = button;
+                    break;
                 }
             }
             
@@ -1081,12 +1239,16 @@ class ASICSWeeklyBatchScraper {
             
             // Verify login success
             const currentUrl = page.url();
+            const currentTitle = await page.title();
             console.log('📍 After login URL:', currentUrl);
+            console.log('📍 After login title:', currentTitle);
             
             if (currentUrl.includes('login') || currentUrl.includes('signin') || currentUrl.includes('auth/error')) {
                 // Check for error messages on the page
                 const errorMessages = await page.evaluate(() => {
-                    const errorElements = document.querySelectorAll('[class*="error"], [class*="alert"], .text-red-500, .text-danger');
+                    const errorElements = document.querySelectorAll(
+                        '[class*="error"], [class*="alert"], .text-red-500, .text-danger, .error-message, .alert-danger'
+                    );
                     return Array.from(errorElements).map(el => el.textContent.trim()).filter(text => text.length > 0);
                 });
                 
@@ -1097,8 +1259,8 @@ class ASICSWeeklyBatchScraper {
                 }
             }
             
-            // Additional verification - look for user-specific elements
-            await this.delay(2000); // Wait for page to fully load
+            // Additional verification - wait for dashboard/main page elements
+            await this.delay(3000);
             
             console.log('✅ Successfully logged into ASICS B2B portal');
             console.log('🍪 Session established, browser ready for authenticated requests');
@@ -1113,8 +1275,13 @@ class ASICSWeeklyBatchScraper {
             
             // Take screenshot for debugging
             try {
-                const screenshot = await page.screenshot({ type: 'png' });
-                console.log('📸 Login page screenshot taken for debugging');
+                const screenshot = await page.screenshot({ type: 'png', fullPage: true });
+                console.log('📸 Full page screenshot taken for debugging');
+                
+                // Also log current page HTML for debugging
+                const pageHtml = await page.content();
+                console.log('📄 Page HTML (first 1000 chars):', pageHtml.substring(0, 1000));
+                
             } catch (screenshotError) {
                 console.log('📸 Could not take screenshot:', screenshotError.message);
             }
