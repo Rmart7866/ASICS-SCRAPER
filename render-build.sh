@@ -1,12 +1,9 @@
 #!/bin/bash
 
-echo "🚀 Starting SUPER FAST Render build for ASICS Scraper..."
+echo "🚀 Starting SUPER FAST Browserless build for ASICS Scraper..."
 
-# Skip Playwright browser downloads during install
-export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-
-# Fast install dependencies
-echo "📦 Fast installing dependencies (no browser download)..."
+# No browser downloads needed - Browserless handles that!
+echo "📦 Installing dependencies (no browser downloads)..."
 npm install --no-audit --no-fund --prefer-offline
 
 # Quick dependency check
@@ -14,7 +11,7 @@ echo "🔍 Quick dependency check..."
 node -e "
 try {
   require('express');
-  require('playwright-chromium');
+  require('puppeteer-core');
   require('pg');
   require('node-cron');
   console.log('✅ All dependencies ready');
@@ -24,4 +21,5 @@ try {
 }
 "
 
-echo "✅ SUPER FAST build complete (no Chrome download needed)"
+echo "✅ SUPER FAST Browserless build complete (no Chrome needed locally!)"
+echo "🎭 Browser automation will use Browserless cloud service"
