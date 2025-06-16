@@ -75,7 +75,7 @@ class ASICSWeeklyBatchScraper {
     }
 
     setDefaultUrls() {
-        // Set some real ASICS B2B URLs as examples
+        // Set some real ASICS B2B URLs as examples - individual product URLs like you mentioned
         this.urlsToMonitor = [
             'https://b2b.asics.com/us/en-us/mens-running-shoes',
             'https://b2b.asics.com/us/en-us/womens-running-shoes'
@@ -119,7 +119,7 @@ class ASICSWeeklyBatchScraper {
             });
         });
 
-        // Dashboard
+        // Dashboard with URL management
         this.app.get('/dashboard', (req, res) => {
             res.send(`
                 <!DOCTYPE html>
@@ -135,7 +135,7 @@ class ASICSWeeklyBatchScraper {
                         .warning { background: #fff3cd; border: 1px solid #ffeaa7; }
                         .url-list { max-height: 300px; overflow-y: auto; }
                         .url-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px; background: #f9f9f9; }
-                        .url-text { flex: 1; font-family: monospace; word-break: break-all; }
+                        .url-text { flex: 1; font-family: monospace; word-break: break-all; font-size: 12px; }
                         .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin-left: 5px; }
                         .btn-primary { background: #007bff; color: white; }
                         .btn-success { background: #28a745; color: white; }
@@ -146,11 +146,14 @@ class ASICSWeeklyBatchScraper {
                         .logs { max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; }
                         .flex { display: flex; gap: 10px; align-items: center; }
                         .hidden { display: none; }
+                        .examples { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 15px 0; }
+                        .examples ul { margin: 10px 0; }
+                        .examples li { margin: 5px 0; font-family: monospace; font-size: 12px; }
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>🚀 ASICS Weekly Batch Scraper</h1>
+                        <h1>🚀 ASICS B2B Scraper Dashboard</h1>
                         
                         <div class="card status">
                             <h2>Status: Active ✅</h2>
@@ -160,15 +163,15 @@ class ASICSWeeklyBatchScraper {
                             <p>ASICS Credentials: ${this.credentials.username ? '✅ Configured' : '⚠️ Missing'}</p>
                         </div>
                         
-                        ${this.databaseEnabled ? `
+                        ${this.databaseEnabled && this.credentials.username ? `
                         <div class="card success">
-                            <h3>✅ Ready to Scrape!</h3>
-                            <p>All systems configured. Database logging enabled.</p>
+                            <h3>✅ Ready to Scrape ASICS B2B!</h3>
+                            <p>Database connected and ASICS credentials configured. Ready to scrape individual products.</p>
                         </div>
                         ` : `
                         <div class="card warning">
-                            <h3>⚠️ Running in Memory Mode</h3>
-                            <p>Database not available but scraping still works. Results stored in memory.</p>
+                            <h3>⚠️ Configuration Needed</h3>
+                            <p>Make sure ASICS_USERNAME and ASICS_PASSWORD environment variables are set.</p>
                         </div>
                         `}
                         
@@ -177,9 +180,25 @@ class ASICSWeeklyBatchScraper {
                             <div class="form-group">
                                 <label for="newUrl">Add New URL:</label>
                                 <div class="flex">
-                                    <input type="url" id="newUrl" class="form-control" placeholder="https://b2b.asics.com/us/en-us/..." />
+                                    <input type="url" id="newUrl" class="form-control" placeholder="https://b2b.asics.com/orders/123/products/1013A142?colorCode=401" />
                                     <button onclick="addUrl()" class="btn btn-success">➕ Add URL</button>
                                 </div>
+                            </div>
+                            
+                            <div class="examples">
+                                <h4>📝 Example ASICS B2B URLs:</h4>
+                                <p><strong>Category Pages:</strong></p>
+                                <ul>
+                                    <li>https://b2b.asics.com/us/en-us/mens-running-shoes</li>
+                                    <li>https://b2b.asics.com/us/en-us/womens-running-shoes</li>
+                                    <li>https://b2b.asics.com/us/en-us/mens-tennis-shoes</li>
+                                </ul>
+                                <p><strong>Individual Product Pages:</strong></p>
+                                <ul>
+                                    <li>https://b2b.asics.com/orders/[ORDER-ID]/products/[SKU]?colorCode=[COLOR]</li>
+                                    <li>https://b2b.asics.com/us/en-us/product/[SKU]</li>
+                                </ul>
+                                <p><strong>Note:</strong> Individual product URLs require being logged into ASICS B2B with proper access.</p>
                             </div>
                             
                             <h4>Current URLs (${this.urlsToMonitor.length}):</h4>
@@ -198,12 +217,6 @@ class ASICSWeeklyBatchScraper {
                             ${this.urlsToMonitor.length === 0 ? `
                             <div class="warning" style="padding: 15px; margin: 10px 0;">
                                 <p><strong>No URLs configured!</strong> Add some ASICS B2B URLs above to start monitoring.</p>
-                                <p><strong>Example URLs:</strong></p>
-                                <ul>
-                                    <li>https://b2b.asics.com/us/en-us/mens-running-shoes</li>
-                                    <li>https://b2b.asics.com/us/en-us/womens-running-shoes</li>
-                                    <li>https://b2b.asics.com/us/en-us/mens-tennis-shoes</li>
-                                </ul>
                             </div>
                             ` : ''}
                         </div>
@@ -254,7 +267,7 @@ class ASICSWeeklyBatchScraper {
                                 
                                 if (data.success) {
                                     urlInput.value = '';
-                                    location.reload(); // Refresh page to show new URL
+                                    location.reload();
                                 } else {
                                     alert('Error: ' + data.error);
                                 }
@@ -276,7 +289,7 @@ class ASICSWeeklyBatchScraper {
                                 const data = await response.json();
                                 
                                 if (data.success) {
-                                    location.reload(); // Refresh page
+                                    location.reload();
                                 } else {
                                     alert('Error: ' + data.error);
                                 }
@@ -308,7 +321,7 @@ class ASICSWeeklyBatchScraper {
                                 const data = await response.json();
                                 
                                 if (data.success) {
-                                    location.reload(); // Refresh page
+                                    location.reload();
                                 } else {
                                     alert('Error: ' + data.error);
                                 }
@@ -363,7 +376,6 @@ class ASICSWeeklyBatchScraper {
                             }
                         }
                         
-                        // Allow adding URLs with Enter key
                         document.getElementById('newUrl').addEventListener('keypress', function(e) {
                             if (e.key === 'Enter') {
                                 addUrl();
@@ -524,7 +536,6 @@ class ASICSWeeklyBatchScraper {
         this.app.get('/logs', (req, res) => {
             try {
                 if (this.databaseEnabled && this.pool) {
-                    // Try database first
                     this.pool.query(`
                         SELECT * FROM scrape_logs 
                         ORDER BY created_at DESC 
@@ -536,7 +547,6 @@ class ASICSWeeklyBatchScraper {
                         res.json(this.inMemoryLogs.slice(-50));
                     });
                 } else {
-                    // Return in-memory logs
                     res.json(this.inMemoryLogs.slice(-50));
                 }
             } catch (error) {
@@ -552,7 +562,6 @@ class ASICSWeeklyBatchScraper {
         }
 
         try {
-            // Clear existing URLs and save new ones
             await this.pool.query('DELETE FROM monitored_urls');
             
             for (const url of this.urlsToMonitor) {
@@ -576,7 +585,6 @@ class ASICSWeeklyBatchScraper {
         }
 
         try {
-            // Try to load from monitored_urls table first
             const result = await this.pool.query(`
                 SELECT url FROM monitored_urls 
                 ORDER BY created_at DESC
@@ -586,19 +594,7 @@ class ASICSWeeklyBatchScraper {
                 this.urlsToMonitor = result.rows.map(row => row.url);
                 console.log(`📋 Loaded ${this.urlsToMonitor.length} URLs from database`);
             } else {
-                // Fallback to scrape_logs if monitored_urls is empty
-                const logResult = await this.pool.query(`
-                    SELECT DISTINCT url FROM scrape_logs 
-                    WHERE created_at > NOW() - INTERVAL '30 days'
-                    LIMIT 100
-                `);
-                
-                if (logResult.rows.length > 0) {
-                    this.urlsToMonitor = logResult.rows.map(row => row.url);
-                    console.log(`📋 Loaded ${this.urlsToMonitor.length} URLs from scrape logs`);
-                } else {
-                    this.setDefaultUrls();
-                }
+                this.setDefaultUrls();
             }
             
         } catch (error) {
@@ -617,7 +613,6 @@ class ASICSWeeklyBatchScraper {
             console.log('🗄️ Initializing database...');
             console.log('🔗 Testing database connection...');
             
-            // Test connection
             const testResult = await this.pool.query('SELECT NOW() as current_time');
             console.log('✅ Database connection successful!');
             console.log('   Time:', testResult.rows[0].current_time);
@@ -636,7 +631,7 @@ class ASICSWeeklyBatchScraper {
                 console.log('⚠️ Could not create monitored_urls table:', tableError.message);
             }
             
-            // Try to create basic scrape_logs table
+            // Create scrape_logs table
             try {
                 await this.pool.query(`
                     CREATE TABLE IF NOT EXISTS scrape_logs (
@@ -649,12 +644,12 @@ class ASICSWeeklyBatchScraper {
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 `);
-                console.log('✅ Basic scrape_logs table ready');
+                console.log('✅ Scrape logs table ready');
             } catch (tableError) {
                 console.log('⚠️ Could not create scrape_logs table:', tableError.message);
             }
 
-            // Try to create products table
+            // Create products table
             try {
                 await this.pool.query(`
                     CREATE TABLE IF NOT EXISTS products (
@@ -669,7 +664,7 @@ class ASICSWeeklyBatchScraper {
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 `);
-                console.log('✅ Basic products table ready');
+                console.log('✅ Products table ready');
             } catch (tableError) {
                 console.log('⚠️ Could not create products table:', tableError.message);
             }
@@ -684,7 +679,6 @@ class ASICSWeeklyBatchScraper {
     }
 
     setupScheduler() {
-        // Weekly scheduler - every Sunday at 2:00 AM
         cron.schedule('0 2 * * 0', async () => {
             console.log('📅 Weekly scheduled batch starting...');
             const batchId = `scheduled_${Date.now()}`;
@@ -706,7 +700,6 @@ class ASICSWeeklyBatchScraper {
         }
         
         try {
-            // Split URLs into mini-batches
             const batches = [];
             for (let i = 0; i < this.urlsToMonitor.length; i += this.config.batchSize) {
                 batches.push(this.urlsToMonitor.slice(i, i + this.config.batchSize));
@@ -714,7 +707,6 @@ class ASICSWeeklyBatchScraper {
             
             const allResults = [];
             
-            // Process each mini-batch
             for (let i = 0; i < batches.length; i++) {
                 const batch = batches[i];
                 console.log(`📦 Mini-batch ${i + 1}/${batches.length}: ${batch.length} URLs`);
@@ -723,7 +715,6 @@ class ASICSWeeklyBatchScraper {
                     const batchResults = await this.processBatch(batch, batchId);
                     allResults.push(...batchResults);
                     
-                    // Delay between batches (except for the last one)
                     if (i < batches.length - 1) {
                         console.log(`⏳ Waiting ${this.config.delayBetweenRequests / 1000}s before next batch...`);
                         await this.delay(this.config.delayBetweenRequests);
@@ -731,11 +722,9 @@ class ASICSWeeklyBatchScraper {
                     
                 } catch (batchError) {
                     console.error(`❌ Mini-batch ${i + 1} failed:`, batchError.message);
-                    // Continue with next batch even if one fails
                 }
             }
             
-            // Process all results
             await this.processResults(allResults, batchId);
             
             const duration = Math.round((Date.now() - startTime) / 1000);
@@ -752,12 +741,10 @@ class ASICSWeeklyBatchScraper {
         let page = null;
         
         try {
-            // Get authenticated browser
             const authResult = await this.getAuthenticatedBrowser();
             browser = authResult.browser;
             page = authResult.page;
             
-            // Process each URL in the batch
             for (const url of urls) {
                 try {
                     console.log(`🔍 Scraping: ${url}`);
@@ -776,7 +763,6 @@ class ASICSWeeklyBatchScraper {
                     });
                 }
                 
-                // Small delay between URLs
                 await this.delay(2000);
             }
             
@@ -793,8 +779,9 @@ class ASICSWeeklyBatchScraper {
         return results;
     }
 
+    // WORKING authentication function from your old code
     async getAuthenticatedBrowser() {
-        console.log('🔧 Starting authentication...');
+        console.log('🔧 Using FIXED authentication method...');
         const browser = await puppeteer.launch({
             headless: true,
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
@@ -817,7 +804,11 @@ class ASICSWeeklyBatchScraper {
             const page = await browser.newPage();
             await page.setViewport({ width: 1280, height: 720 });
             
-            console.log('🔐 Navigating to ASICS B2B login...');
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            console.log('🚀 [FIXED] Launching browser with ASICS B2B authentication...');
+            console.log('🔐 [FIXED] Navigating to ASICS B2B authentication...');
+            
             await page.goto('https://b2b.asics.com/authentication/login', { 
                 waitUntil: 'networkidle0',
                 timeout: 30000 
@@ -825,19 +816,226 @@ class ASICSWeeklyBatchScraper {
 
             const currentUrl = page.url();
             const title = await page.title();
-            console.log(`📋 Current URL: ${currentUrl}`);
-            console.log(`📋 Page title: ${title}`);
+            console.log(`📋 [FIXED] Current URL: ${currentUrl}`);
+            console.log(`📋 [FIXED] Page title: ${title}`);
 
-            // Simple authentication attempt
-            console.log('🔑 Attempting to authenticate...');
+            const pageState = await page.evaluate(() => {
+                const bodyText = document.body ? document.body.innerText.slice(0, 500) : '';
+                const hasCountrySelection = bodyText.includes('Please Select The Region') || 
+                                          bodyText.includes('Americas') || 
+                                          bodyText.includes('United States');
+                const hasLoginForm = document.querySelector('input[type="password"]') !== null ||
+                                   document.querySelector('input[name*="password"]') !== null;
+                
+                return {
+                    title: document.title,
+                    url: window.location.href,
+                    bodyText,
+                    hasCountrySelection,
+                    hasLoginForm
+                };
+            });
+
+            console.log('📊 [FIXED] Page content check:', pageState);
+
+            if (pageState.hasCountrySelection && !pageState.hasLoginForm) {
+                console.log('🌍 [FIXED] Country selection detected, clicking United States...');
+                
+                const countrySelectors = [
+                    'a[href*="united-states"]',
+                    'button:contains("United States")',
+                    'div:contains("United States")',
+                    'span:contains("United States")',
+                    '.country-item:contains("United States")'
+                ];
+
+                let countrySelected = false;
+                for (const selector of countrySelectors) {
+                    try {
+                        await page.waitForSelector(selector, { timeout: 5000 });
+                        await page.click(selector);
+                        countrySelected = true;
+                        break;
+                    } catch (e) {
+                        continue;
+                    }
+                }
+
+                if (!countrySelected) {
+                    await page.evaluate(() => {
+                        const elements = Array.from(document.querySelectorAll('*'));
+                        const usElement = elements.find(el => 
+                            el.textContent && el.textContent.includes('United States')
+                        );
+                        if (usElement) {
+                            usElement.click();
+                        }
+                    });
+                }
+
+                console.log('⏳ [FIXED] Waiting for login form after country selection...');
+                await page.waitForTimeout(3000);
+                
+                try {
+                    await page.waitForSelector('input[type="password"], input[name*="password"]', { timeout: 10000 });
+                    console.log('✅ [FIXED] Login form appeared');
+                } catch (e) {
+                    throw new Error('Login form did not appear after country selection');
+                }
+            }
+
+            const loginFormCheck = await page.evaluate(() => {
+                const usernameSelectors = [
+                    'input[type="email"]',
+                    'input[name*="email" i]',
+                    'input[name*="username" i]',
+                    'input[name*="user" i]',
+                    'input[id*="email" i]',
+                    'input[id*="username" i]',
+                    'input[id*="user" i]',
+                    'input[placeholder*="email" i]',
+                    'input[placeholder*="username" i]',
+                    'input[placeholder*="user" i]'
+                ];
+                
+                const passwordSelectors = [
+                    'input[type="password"]',
+                    'input[name*="password" i]',
+                    'input[id*="password" i]'
+                ];
+
+                let usernameField = null;
+                let passwordField = null;
+
+                for (const selector of usernameSelectors) {
+                    usernameField = document.querySelector(selector);
+                    if (usernameField) break;
+                }
+
+                for (const selector of passwordSelectors) {
+                    passwordField = document.querySelector(selector);
+                    if (passwordField) break;
+                }
+
+                if (!usernameField && passwordField) {
+                    const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
+                    const passwordIndex = Array.from(document.querySelectorAll('input')).indexOf(passwordField);
+                    usernameField = allInputs.find(input => {
+                        const inputIndex = Array.from(document.querySelectorAll('input')).indexOf(input);
+                        return inputIndex < passwordIndex;
+                    });
+                }
+
+                function getSelector(element) {
+                    if (element.id) return `#${element.id}`;
+                    if (element.name) return `input[name="${element.name}"]`;
+                    if (element.className) return `input.${element.className.split(' ')[0]}`;
+                    return element.tagName.toLowerCase();
+                }
+
+                return {
+                    hasEmailField: !!usernameField,
+                    hasPasswordField: !!passwordField,
+                    hasBoth: !!(usernameField && passwordField),
+                    usernameSelector: usernameField ? getSelector(usernameField) : null,
+                    passwordSelector: passwordField ? getSelector(passwordField) : null
+                };
+            });
+
+            console.log('📝 [FIXED] Login form check:', loginFormCheck);
+
+            const debugState = await page.evaluate(() => ({
+                url: window.location.href,
+                title: document.title,
+                bodyText: document.body ? document.body.innerText.slice(0, 500) : ''
+            }));
+            console.log('🔍 [FIXED] Current page state:', debugState);
+
+            if (!loginFormCheck.hasBoth) {
+                try {
+                    await page.screenshot({
+                        path: '/tmp/login_debug.png',
+                        fullPage: true
+                    });
+                    console.log('📸 [FIXED] Screenshot taken');
+                } catch (screenshotError) {
+                    console.log('⚠️ Could not take screenshot:', screenshotError.message);
+                }
+                
+                const debugInfo = {
+                    url: debugState.url,
+                    title: debugState.title,
+                    bodySnippet: debugState.bodyText.slice(0, 200),
+                    loginFormCheck
+                };
+                console.log('🔍 [FIXED] Debug info:', debugInfo);
+                
+                throw new Error(`Login form incomplete. Email: ${loginFormCheck.hasEmailField}, Password: ${loginFormCheck.hasPasswordField}`);
+            }
+
+            try {
+                const cookieAcceptButton = await page.$('button:contains("Accept"), button[id*="accept"], button[class*="accept"]');
+                if (cookieAcceptButton) {
+                    await cookieAcceptButton.click();
+                    console.log('🍪 [FIXED] Cookie consent accepted');
+                    await page.waitForTimeout(1000);
+                }
+            } catch (e) {
+                // Cookie consent not found
+            }
+
+            console.log('📝 [FIXED] Filling in credentials...');
             
-            // For now, just return the browser without actual login to test the flow
-            console.log('⚠️ Skipping actual login for testing - will implement full auth after basic flow works');
+            if (loginFormCheck.usernameSelector) {
+                await page.type(loginFormCheck.usernameSelector, this.credentials.username);
+            }
             
+            if (loginFormCheck.passwordSelector) {
+                await page.type(loginFormCheck.passwordSelector, this.credentials.password);
+            }
+
+            console.log('🔐 [FIXED] Submitting login form...');
+            
+            const submitSelectors = [
+                'button[type="submit"]',
+                'input[type="submit"]',
+                'button:contains("Log In")',
+                'button:contains("Login")',
+                'button:contains("Sign In")',
+                '.login-button',
+                '#login-button'
+            ];
+
+            let submitted = false;
+            for (const selector of submitSelectors) {
+                try {
+                    await page.click(selector);
+                    submitted = true;
+                    break;
+                } catch (e) {
+                    continue;
+                }
+            }
+
+            if (!submitted) {
+                await page.focus(loginFormCheck.passwordSelector);
+                await page.keyboard.press('Enter');
+            }
+
+            console.log('⏳ [FIXED] Waiting for authentication...');
+            await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
+
+            const finalUrl = page.url();
+            console.log(`✅ [FIXED] Authentication complete. Final URL: ${finalUrl}`);
+
+            if (finalUrl.includes('login') || finalUrl.includes('authentication')) {
+                throw new Error('Authentication failed - still on login page');
+            }
+
             return { browser, page };
 
         } catch (error) {
-            console.error('❌ Authentication failed:', error.message);
+            console.error('❌ [FIXED] Authentication failed:', error.message);
             await browser.close();
             throw error;
         }
@@ -850,24 +1048,123 @@ class ASICSWeeklyBatchScraper {
             console.log(`🔍 Navigating to: ${url}`);
             await page.goto(url, { waitUntil: 'networkidle0', timeout: this.config.timeout });
             
-            // Wait for content to load
             await page.waitForTimeout(3000);
             
-            // Simple test scraping - just get page title for now
-            const pageTitle = await page.title();
-            const products = [
-                {
-                    name: `Test Product from ${pageTitle}`,
-                    price: '$99.99',
-                    sku: `test-${Date.now()}`,
-                    imageUrl: '',
-                    link: url,
-                    description: 'Test product'
+            // Enhanced product scraping for ASICS B2B
+            const products = await page.evaluate(() => {
+                const productElements = document.querySelectorAll([
+                    '.product-item',
+                    '.product-card', 
+                    '.product-tile',
+                    '.product',
+                    '[data-product-id]',
+                    '.grid-item',
+                    '.product-details',
+                    '.item-detail'
+                ].join(', '));
+                
+                const products = [];
+                
+                productElements.forEach((element, index) => {
+                    try {
+                        const name = element.querySelector([
+                            '.product-name',
+                            '.product-title', 
+                            '.name',
+                            'h1',
+                            'h2',
+                            'h3',
+                            '.title',
+                            '[data-product-name]'
+                        ].join(', '))?.textContent?.trim();
+                        
+                        const price = element.querySelector([
+                            '.price',
+                            '.product-price',
+                            '.cost',
+                            '[class*="price"]',
+                            '.msrp',
+                            '.wholesale'
+                        ].join(', '))?.textContent?.trim();
+                        
+                        const sku = element.querySelector([
+                            '.sku',
+                            '.product-id',
+                            '[data-sku]',
+                            '[data-product-id]',
+                            '.style-number',
+                            '.model-number'
+                        ].join(', '))?.textContent?.trim() || 
+                        element.getAttribute('data-sku') || 
+                        element.getAttribute('data-product-id');
+                        
+                        const imageUrl = element.querySelector('img')?.src;
+                        const link = element.querySelector('a')?.href;
+                        
+                        // Try to get additional ASICS-specific details
+                        const color = element.querySelector([
+                            '.color',
+                            '.color-name',
+                            '[data-color]'
+                        ].join(', '))?.textContent?.trim();
+                        
+                        const size = element.querySelector([
+                            '.size',
+                            '.size-option',
+                            '[data-size]'
+                        ].join(', '))?.textContent?.trim();
+                        
+                        const availability = element.querySelector([
+                            '.availability',
+                            '.stock',
+                            '.in-stock',
+                            '.qty'
+                        ].join(', '))?.textContent?.trim();
+                        
+                        if (name || sku || price) {
+                            products.push({
+                                name: name || '',
+                                price: price || '',
+                                sku: sku || `auto-${index}`,
+                                imageUrl: imageUrl || '',
+                                link: link || '',
+                                color: color || '',
+                                size: size || '',
+                                availability: availability || '',
+                                description: ''
+                            });
+                        }
+                    } catch (productError) {
+                        console.log('Error processing product:', productError);
+                    }
+                });
+                
+                // If no products found with standard selectors, try to get page-level product info
+                if (products.length === 0) {
+                    const pageTitle = document.title;
+                    const bodyText = document.body ? document.body.innerText : '';
+                    
+                    // Check if this looks like a product page
+                    if (pageTitle && (bodyText.includes('SKU') || bodyText.includes('Price') || url.includes('product'))) {
+                        products.push({
+                            name: pageTitle,
+                            price: 'See page for pricing',
+                            sku: 'extracted-from-page',
+                            imageUrl: '',
+                            link: url,
+                            color: '',
+                            size: '',
+                            availability: '',
+                            description: 'Product page detected but specific details not extracted'
+                        });
+                    }
                 }
-            ];
+                
+                return products;
+            });
             
             const duration = Date.now() - startTime;
-            console.log(`✅ Test scraped ${products.length} products from ${url} in ${duration}ms`);
+            console.log(`✅ Scraped ${products.length} products from ${url} in ${duration}ms`);
             
             return {
                 url,
@@ -900,21 +1197,18 @@ class ASICSWeeklyBatchScraper {
             return;
         }
 
-        // Always store in memory
         this.inMemoryLogs.push(...results.map(r => ({
             ...r,
             batch_id: batchId,
             created_at: new Date().toISOString()
         })));
 
-        // Keep only last 1000 logs in memory
         if (this.inMemoryLogs.length > 1000) {
             this.inMemoryLogs = this.inMemoryLogs.slice(-1000);
         }
 
         console.log(`📊 Logged ${results.length} results to memory`);
 
-        // Try to log to database if available
         if (this.databaseEnabled && this.pool) {
             try {
                 const insertQuery = `
@@ -950,17 +1244,14 @@ class ASICSWeeklyBatchScraper {
         }
 
         try {
-            // Log results
             await this.logScrapeResults(results, batchId);
             
-            // Process successful results
             const successfulResults = results.filter(r => r.status === 'success' && r.products?.length > 0);
             const failedResults = results.filter(r => r.status === 'error' || !r.products || r.products.length === 0);
             
             console.log(`✅ Successful scrapes: ${successfulResults.length}`);
             console.log(`❌ Failed scrapes: ${failedResults.length}`);
             
-            // Log summary of products found
             let totalProducts = 0;
             successfulResults.forEach(result => {
                 totalProducts += result.products?.length || 0;
@@ -981,7 +1272,6 @@ class ASICSWeeklyBatchScraper {
         try {
             console.log('🚀 Initializing ASICS Weekly Batch Scraper...');
             
-            // Log memory info
             const memUsage = process.memoryUsage();
             const formatMB = (bytes) => `${Math.round(bytes / 1024 / 1024)}MB`;
             console.log('💾 Memory available:', {
@@ -990,13 +1280,11 @@ class ASICSWeeklyBatchScraper {
                 rss: formatMB(memUsage.rss)
             });
 
-            // Start the server
             this.app.listen(this.port, () => {
                 console.log(`🚀 ASICS Weekly Batch Scraper running on port ${this.port}`);
                 console.log('📊 Dashboard available at /dashboard');
             });
 
-            // Setup scheduler
             this.setupScheduler();
             
             console.log(`✅ Weekly batch scraper initialized with ${this.urlsToMonitor.length} URLs`);
@@ -1010,7 +1298,6 @@ class ASICSWeeklyBatchScraper {
     }
 }
 
-// Handle graceful shutdown
 process.on('SIGINT', () => {
     console.log('🛑 Received SIGINT, shutting down gracefully...');
     process.exit(0);
@@ -1021,7 +1308,6 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
-// Start the scraper
 const scraper = new ASICSWeeklyBatchScraper();
 scraper.start().catch(error => {
     console.error('❌ Startup failed:', error);
