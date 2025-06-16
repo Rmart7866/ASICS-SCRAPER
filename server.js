@@ -16,7 +16,8 @@ class ASICSWeeklyBatchScraper {
         console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
         console.log('   ASICS_USERNAME:', process.env.ASICS_USERNAME ? 'SET' : 'NOT SET');
         console.log('   ASICS_PASSWORD:', process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET');
-        console.log('   BROWSERLESS_ENDPOINT:', process.env.BROWSERLESS_ENDPOINT || 'ws://browserless:3000 (default)');
+        console.log('   BROWSERLESS_TOKEN:', process.env.BROWSERLESS_TOKEN ? 'SET' : 'NOT SET');
+        console.log('   BROWSERLESS_ENDPOINT:', process.env.BROWSERLESS_ENDPOINT || 'NOT SET');
         
         // Database configuration
         if (process.env.DATABASE_URL) {
@@ -41,8 +42,10 @@ class ASICSWeeklyBatchScraper {
             password: process.env.ASICS_PASSWORD
         };
 
-        // Self-hosted Browserless configuration
-        this.browserlessEndpoint = process.env.BROWSERLESS_ENDPOINT || 'ws://browserless:3000';
+        // Browserless Cloud configuration
+        this.browserlessToken = process.env.BROWSERLESS_TOKEN;
+        this.browserlessEndpoint = process.env.BROWSERLESS_ENDPOINT || 
+            (this.browserlessToken ? `wss://chrome.browserless.io?token=${this.browserlessToken}` : 'ws://browserless:3000');
         this.isSelfHosted = !this.browserlessEndpoint.includes('browserless.io');
 
         if (!this.credentials.username || !this.credentials.password) {
@@ -54,7 +57,12 @@ class ASICSWeeklyBatchScraper {
         if (this.isSelfHosted) {
             console.log('🐳 Using self-hosted Browserless at:', this.browserlessEndpoint);
         } else {
-            console.log('☁️ Using Browserless cloud service');
+            console.log('☁️ Using Browserless cloud service at:', this.browserlessEndpoint);
+            if (!this.browserlessToken) {
+                console.warn('⚠️ BROWSERLESS_TOKEN not set - cloud service will fail');
+            } else {
+                console.log('✅ Browserless token configured');
+            }
         }
 
         // Scraping configuration
@@ -114,30 +122,34 @@ class ASICSWeeklyBatchScraper {
         // Health check
         this.app.get('/', (req, res) => {
             res.json({
-                status: 'ASICS Weekly Batch Scraper Active (Self-Hosted Browserless)',
+                status: 'ASICS Weekly Batch Scraper Active (Browserless Cloud)',
                 uptime: process.uptime(),
                 memory: process.memoryUsage(),
                 config: this.config,
                 urlCount: this.urlsToMonitor.length,
                 databaseEnabled: this.databaseEnabled,
                 browser: this.isSelfHosted ? 'Self-Hosted Browserless' : 'Browserless Cloud',
-                browserlessEndpoint: this.browserlessEndpoint,
+                browserlessEndpoint: this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***'),
                 environment: {
                     DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
                     ASICS_USERNAME: process.env.ASICS_USERNAME ? 'SET' : 'NOT SET',
                     ASICS_PASSWORD: process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET',
-                    BROWSERLESS_ENDPOINT: this.browserlessEndpoint
+                    BROWSERLESS_TOKEN: process.env.BROWSERLESS_TOKEN ? 'SET' : 'NOT SET',
+                    BROWSERLESS_ENDPOINT: this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***')
                 }
             });
         });
 
         // Dashboard with URL management
         this.app.get('/dashboard', (req, res) => {
+            const serviceType = this.isSelfHosted ? 'Self-Hosted Browserless' : 'Browserless Cloud';
+            const serviceIcon = this.isSelfHosted ? '🐳' : '☁️';
+            
             res.send(`
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <title>ASICS Scraper Dashboard (Self-Hosted Browserless)</title>
+                    <title>ASICS Scraper Dashboard (${serviceType})</title>
                     <style>
                         body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
                         .container { max-width: 1200px; margin: 0 auto; }
@@ -145,6 +157,7 @@ class ASICSWeeklyBatchScraper {
                         .status { background: #f0f8ff; }
                         .success { background: #d4edda; border: 1px solid #c3e6cb; }
                         .warning { background: #fff3cd; border: 1px solid #ffeaa7; }
+                        .cloud-service { background: #e8f4fd; border: 1px solid #2196f3; }
                         .self-hosted { background: #e8f5e8; border: 1px solid #4caf50; }
                         .url-list { max-height: 300px; overflow-y: auto; }
                         .url-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px; background: #f9f9f9; }
@@ -166,7 +179,7 @@ class ASICSWeeklyBatchScraper {
                 </head>
                 <body>
                     <div class="container">
-                        <h1>🚀 ASICS B2B Scraper Dashboard (Self-Hosted Browserless)</h1>
+                        <h1>🚀 ASICS B2B Scraper Dashboard (${serviceType})</h1>
                         
                         <div class="card status">
                             <h2>Status: Active ✅</h2>
@@ -174,27 +187,40 @@ class ASICSWeeklyBatchScraper {
                             <p>Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB</p>
                             <p>Database: ${this.databaseEnabled ? '✅ Connected' : '⚠️ Memory-only mode'}</p>
                             <p>ASICS Credentials: ${this.credentials.username ? '✅ Configured' : '⚠️ Missing'}</p>
-                            <p>Browser: 🐳 Self-Hosted Browserless at ${this.browserlessEndpoint}</p>
+                            <p>Browser: ${serviceIcon} ${serviceType}</p>
+                            <p>Browserless Token: ${this.browserlessToken ? '✅ Configured' : '⚠️ Missing'}</p>
                         </div>
                         
-                        <div class="card self-hosted">
-                            <h3>🐳 Self-Hosted Browserless Active!</h3>
-                            <p><strong>✅ FREE forever</strong> - no subscription fees or API limits</p>
-                            <p><strong>✅ Full control</strong> - your own browser infrastructure</p>
-                            <p><strong>✅ No deployment issues</strong> - containers handle everything</p>
-                            <p><strong>✅ Privacy & security</strong> - data never leaves your servers</p>
-                            <p><strong>Endpoint:</strong> <code>${this.browserlessEndpoint}</code></p>
+                        <div class="card ${this.isSelfHosted ? 'self-hosted' : 'cloud-service'}">
+                            <h3>${serviceIcon} ${serviceType} Active!</h3>
+                            ${this.isSelfHosted ? `
+                                <p><strong>✅ FREE forever</strong> - no subscription fees or API limits</p>
+                                <p><strong>✅ Full control</strong> - your own browser infrastructure</p>
+                                <p><strong>✅ No deployment issues</strong> - containers handle everything</p>
+                                <p><strong>✅ Privacy & security</strong> - data never leaves your servers</p>
+                            ` : `
+                                <p><strong>✅ FREE tier</strong> - 1,000 units per month included</p>
+                                <p><strong>✅ Managed infrastructure</strong> - no server maintenance</p>
+                                <p><strong>✅ Global availability</strong> - fast worldwide access</p>
+                                <p><strong>✅ Automatic scaling</strong> - handles traffic spikes</p>
+                            `}
+                            <p><strong>Endpoint:</strong> <code>${this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***')}</code></p>
                         </div>
                         
-                        ${this.credentials.username ? `
+                        ${this.credentials.username && (this.browserlessToken || this.isSelfHosted) ? `
                         <div class="card success">
                             <h3>✅ Ready to Scrape ASICS B2B!</h3>
-                            <p>ASICS credentials configured and self-hosted Browserless ready.</p>
+                            <p>ASICS credentials configured and Browserless ready.</p>
                         </div>
                         ` : `
                         <div class="card warning">
                             <h3>⚠️ Configuration Needed</h3>
-                            <p>Make sure ASICS_USERNAME and ASICS_PASSWORD environment variables are set.</p>
+                            <p>Make sure these environment variables are set:</p>
+                            <ul>
+                                <li>ASICS_USERNAME ${this.credentials.username ? '✅' : '❌'}</li>
+                                <li>ASICS_PASSWORD ${this.credentials.password ? '✅' : '❌'}</li>
+                                <li>BROWSERLESS_TOKEN ${this.browserlessToken ? '✅' : '❌'} ${this.isSelfHosted ? '(not needed for self-hosted)' : ''}</li>
+                            </ul>
                         </div>
                         `}
                         
@@ -246,7 +272,7 @@ class ASICSWeeklyBatchScraper {
                         <div class="card">
                             <h3>🎯 Quick Actions</h3>
                             <button onclick="triggerBatch()" class="btn btn-primary">
-                                🐳 Trigger Self-Hosted Batch
+                                ${serviceIcon} Trigger ${serviceType} Batch
                             </button>
                             <button onclick="viewLogs()" class="btn btn-success">
                                 📋 View Recent Logs
@@ -353,7 +379,7 @@ class ASICSWeeklyBatchScraper {
                             const result = document.getElementById('result');
                             
                             button.disabled = true;
-                            button.textContent = '⏳ Starting self-hosted batch...';
+                            button.textContent = '⏳ Starting batch...';
                             result.innerHTML = '';
                             
                             try {
@@ -361,7 +387,7 @@ class ASICSWeeklyBatchScraper {
                                 const data = await response.json();
                                 
                                 if (data.success) {
-                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Self-hosted batch started! Check logs for progress.</div>';
+                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Batch started! Check logs for progress.</div>';
                                 } else {
                                     result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px; margin: 10px 0;">❌ ' + data.error + '</div>';
                                 }
@@ -370,19 +396,19 @@ class ASICSWeeklyBatchScraper {
                             }
                             
                             button.disabled = false;
-                            button.textContent = '🐳 Trigger Self-Hosted Batch';
+                            button.textContent = '${serviceIcon} Trigger ${serviceType} Batch';
                         }
                         
                         async function testBrowserless() {
                             const result = document.getElementById('result');
-                            result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px; margin: 10px 0;">🧪 Testing self-hosted Browserless connection...</div>';
+                            result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px; margin: 10px 0;">🧪 Testing Browserless connection...</div>';
                             
                             try {
                                 const response = await fetch('/test-browserless');
                                 const data = await response.json();
                                 
                                 if (data.success) {
-                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Self-hosted Browserless connection successful!</div>';
+                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Browserless connection successful!</div>';
                                 } else {
                                     result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px; margin: 10px 0;">❌ Browserless test failed: ' + data.error + '</div>';
                                 }
@@ -426,7 +452,8 @@ class ASICSWeeklyBatchScraper {
         // Test Browserless connection endpoint
         this.app.get('/test-browserless', async (req, res) => {
             try {
-                console.log('🧪 Testing self-hosted Browserless connection...');
+                const serviceType = this.isSelfHosted ? 'self-hosted' : 'cloud';
+                console.log(`🧪 Testing ${serviceType} Browserless connection...`);
                 
                 const browser = await puppeteer.connect({
                     browserWSEndpoint: this.browserlessEndpoint
@@ -437,11 +464,11 @@ class ASICSWeeklyBatchScraper {
                 const title = await page.title();
                 await browser.close();
                 
-                console.log('✅ Self-hosted Browserless connection successful!');
-                res.json({ success: true, message: 'Self-hosted Browserless connection successful', title });
+                console.log(`✅ ${serviceType} Browserless connection successful!`);
+                res.json({ success: true, message: `${serviceType} Browserless connection successful`, title });
                 
             } catch (error) {
-                console.error('❌ Self-hosted Browserless connection failed:', error.message);
+                console.error(`❌ Browserless connection failed:`, error.message);
                 res.json({ success: false, error: error.message });
             }
         });
@@ -571,17 +598,18 @@ class ASICSWeeklyBatchScraper {
                     });
                 }
                 
-                console.log('🎯 Manual self-hosted batch trigger received');
+                const serviceType = this.isSelfHosted ? 'self-hosted' : 'cloud';
+                console.log(`🎯 Manual ${serviceType} batch trigger received`);
                 const batchId = `manual_${Date.now()}`;
                 
                 setTimeout(() => this.startWeeklyBatch(batchId), 1000);
                 
                 res.json({ 
                     success: true, 
-                    message: 'Self-hosted batch started in background', 
+                    message: `${serviceType} batch started in background`, 
                     batchId,
                     urlCount: this.urlsToMonitor.length,
-                    browser: 'Self-Hosted Browserless'
+                    browser: this.isSelfHosted ? 'Self-Hosted Browserless' : 'Browserless Cloud'
                 });
             } catch (error) {
                 console.error('❌ Manual trigger failed:', error);
@@ -702,7 +730,8 @@ class ASICSWeeklyBatchScraper {
 
     setupScheduler() {
         cron.schedule('0 2 * * 0', async () => {
-            console.log('📅 Weekly scheduled self-hosted batch starting...');
+            const serviceType = this.isSelfHosted ? 'self-hosted' : 'cloud';
+            console.log(`📅 Weekly scheduled ${serviceType} batch starting...`);
             const batchId = `scheduled_${Date.now()}`;
             await this.startWeeklyBatch(batchId);
         }, {
@@ -801,11 +830,12 @@ class ASICSWeeklyBatchScraper {
         return results;
     }
 
-    // SELF-HOSTED BROWSERLESS authentication
+    // Cloud or Self-hosted Browserless authentication
     async getAuthenticatedBrowser() {
-        console.log('🐳 Using self-hosted Browserless for ASICS B2B authentication...');
+        const serviceType = this.isSelfHosted ? 'SELF-HOSTED' : 'CLOUD';
+        console.log(`🌐 Using ${serviceType} Browserless for ASICS B2B authentication...`);
         
-        // Connect to self-hosted Browserless (no token needed)
+        // Connect to Browserless (cloud or self-hosted)
         const browser = await puppeteer.connect({
             browserWSEndpoint: this.browserlessEndpoint
         });
@@ -817,7 +847,7 @@ class ASICSWeeklyBatchScraper {
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             await page.setViewport({ width: 1366, height: 768 });
             
-            console.log('🚀 [SELF-HOSTED] Navigating to ASICS B2B login...');
+            console.log(`🚀 [${serviceType}] Navigating to ASICS B2B login...`);
             await page.goto('https://b2b.asics.com/authentication/login', { 
                 waitUntil: 'networkidle0',
                 timeout: 30000 
@@ -825,8 +855,8 @@ class ASICSWeeklyBatchScraper {
 
             const currentUrl = page.url();
             const title = await page.title();
-            console.log(`📋 [SELF-HOSTED] Current URL: ${currentUrl}`);
-            console.log(`📋 [SELF-HOSTED] Page title: ${title}`);
+            console.log(`📋 [${serviceType}] Current URL: ${currentUrl}`);
+            console.log(`📋 [${serviceType}] Page title: ${title}`);
 
             // Check page content
             const pageState = await page.evaluate(() => {
@@ -845,17 +875,17 @@ class ASICSWeeklyBatchScraper {
                 };
             });
 
-            console.log('📊 [SELF-HOSTED] Page content check:', pageState);
+            console.log(`📊 [${serviceType}] Page content check:`, pageState);
 
             // Handle country selection
             if (pageState.hasCountrySelection && !pageState.hasLoginForm) {
-                console.log('🌍 [SELF-HOSTED] Country selection detected, clicking United States...');
+                console.log(`🌍 [${serviceType}] Country selection detected, clicking United States...`);
                 
                 try {
                     await page.click('text=United States');
-                    console.log('⏳ [SELF-HOSTED] Waiting for login form...');
+                    console.log(`⏳ [${serviceType}] Waiting for login form...`);
                     await page.waitForSelector('input[type="password"]', { timeout: 10000 });
-                    console.log('✅ [SELF-HOSTED] Login form appeared');
+                    console.log(`✅ [${serviceType}] Login form appeared`);
                 } catch (e) {
                     throw new Error('Login form did not appear after country selection');
                 }
@@ -868,11 +898,11 @@ class ASICSWeeklyBatchScraper {
             await page.waitForSelector(usernameSelector, { timeout: 10000 });
             await page.waitForSelector(passwordSelector, { timeout: 10000 });
 
-            console.log('📝 [SELF-HOSTED] Filling in credentials...');
+            console.log(`📝 [${serviceType}] Filling in credentials...`);
             await page.type(usernameSelector, this.credentials.username);
             await page.type(passwordSelector, this.credentials.password);
 
-            console.log('🔐 [SELF-HOSTED] Submitting login form...');
+            console.log(`🔐 [${serviceType}] Submitting login form...`);
             
             // Submit form
             try {
@@ -887,7 +917,7 @@ class ASICSWeeklyBatchScraper {
             }
 
             const finalUrl = page.url();
-            console.log(`✅ [SELF-HOSTED] Authentication complete. Final URL: ${finalUrl}`);
+            console.log(`✅ [${serviceType}] Authentication complete. Final URL: ${finalUrl}`);
 
             if (finalUrl.includes('login') || finalUrl.includes('authentication')) {
                 throw new Error('Authentication failed - still on login page');
@@ -896,7 +926,7 @@ class ASICSWeeklyBatchScraper {
             return { browser, page };
 
         } catch (error) {
-            console.error('❌ [SELF-HOSTED] Authentication failed:', error.message);
+            console.error(`❌ [${serviceType}] Authentication failed:`, error.message);
             await browser.close();
             throw error;
         }
@@ -1095,8 +1125,9 @@ class ASICSWeeklyBatchScraper {
 
     async start() {
         try {
-            console.log('🚀 Initializing ASICS Weekly Batch Scraper with Self-Hosted Browserless...');
-            console.log('🐳 Using self-hosted Browserless - no external dependencies!');
+            const serviceType = this.isSelfHosted ? 'Self-Hosted Browserless' : 'Browserless Cloud';
+            console.log(`🚀 Initializing ASICS Weekly Batch Scraper with ${serviceType}...`);
+            console.log(`${this.isSelfHosted ? '🐳' : '☁️'} Using ${serviceType.toLowerCase()} - ${this.isSelfHosted ? 'no external dependencies' : 'managed infrastructure'}!`);
             
             const memUsage = process.memoryUsage();
             const formatMB = (bytes) => `${Math.round(bytes / 1024 / 1024)}MB`;
@@ -1113,7 +1144,7 @@ class ASICSWeeklyBatchScraper {
             this.setupScheduler();
             
             console.log(`✅ Weekly batch scraper initialized with ${this.urlsToMonitor.length} URLs`);
-            console.log(`🐳 Browser: Self-Hosted Browserless (Complete control!)`);
+            console.log(`${this.isSelfHosted ? '🐳' : '☁️'} Browser: ${serviceType}`);
 
         } catch (error) {
             console.error('❌ Failed to start scraper:', error);
