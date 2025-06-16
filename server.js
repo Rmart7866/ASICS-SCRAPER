@@ -54,11 +54,8 @@ class ASICSWeeklyBatchScraper {
             timeout: 60000
         };
 
-        // URLs to monitor
-        this.urlsToMonitor = [
-            'https://b2b.asics.com/us/en-us/mens-running-shoes',
-            'https://b2b.asics.com/us/en-us/womens-running-shoes'
-        ];
+        // URLs to monitor - start with empty, will be loaded from database or defaults
+        this.urlsToMonitor = [];
         
         // In-memory storage for results
         this.inMemoryLogs = [];
@@ -67,11 +64,23 @@ class ASICSWeeklyBatchScraper {
         this.setupMiddleware();
         this.setupRoutes();
         
-        // Initialize database but don't crash if it fails
-        this.initializeDatabase().catch(error => {
-            console.error('⚠️ Database initialization failed, continuing without database:', error.message);
+        // Initialize database and load URLs
+        this.initializeDatabase().then(() => {
+            this.loadUrlsToMonitor();
+        }).catch(error => {
+            console.error('⚠️ Database initialization failed, using defaults:', error.message);
             this.databaseEnabled = false;
+            this.setDefaultUrls();
         });
+    }
+
+    setDefaultUrls() {
+        // Set some real ASICS B2B URLs as examples
+        this.urlsToMonitor = [
+            'https://b2b.asics.com/us/en-us/mens-running-shoes',
+            'https://b2b.asics.com/us/en-us/womens-running-shoes'
+        ];
+        console.log('📋 Using default URLs');
     }
 
     setupMiddleware() {
@@ -118,62 +127,196 @@ class ASICSWeeklyBatchScraper {
                 <head>
                     <title>ASICS Scraper Dashboard</title>
                     <style>
-                        body { font-family: Arial, sans-serif; margin: 40px; }
-                        .status { background: #f0f8ff; padding: 20px; border-radius: 8px; }
-                        .config { background: #f5f5f5; padding: 15px; margin: 20px 0; }
-                        .urls { background: #fff5ee; padding: 15px; margin: 20px 0; }
-                        .success { background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; margin: 20px 0; border-radius: 5px; }
-                        .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 20px 0; border-radius: 5px; }
+                        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                        .container { max-width: 1200px; margin: 0 auto; }
+                        .card { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                        .status { background: #f0f8ff; }
+                        .success { background: #d4edda; border: 1px solid #c3e6cb; }
+                        .warning { background: #fff3cd; border: 1px solid #ffeaa7; }
+                        .url-list { max-height: 300px; overflow-y: auto; }
+                        .url-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 4px; background: #f9f9f9; }
+                        .url-text { flex: 1; font-family: monospace; word-break: break-all; }
+                        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin-left: 5px; }
+                        .btn-primary { background: #007bff; color: white; }
+                        .btn-success { background: #28a745; color: white; }
+                        .btn-danger { background: #dc3545; color: white; }
+                        .btn-warning { background: #ffc107; color: black; }
+                        .form-group { margin: 10px 0; }
+                        .form-control { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+                        .logs { max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; }
+                        .flex { display: flex; gap: 10px; align-items: center; }
+                        .hidden { display: none; }
                     </style>
                 </head>
                 <body>
-                    <h1>🚀 ASICS Weekly Batch Scraper</h1>
-                    <div class="status">
-                        <h2>Status: Active ✅</h2>
-                        <p>Uptime: ${Math.floor(process.uptime() / 60)} minutes</p>
-                        <p>Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB</p>
-                        <p>Database: ${this.databaseEnabled ? '✅ Connected' : '⚠️ Memory-only mode'}</p>
-                        <p>ASICS Credentials: ${this.credentials.username ? '✅ Configured' : '⚠️ Missing'}</p>
-                    </div>
-                    
-                    ${this.databaseEnabled ? `
-                    <div class="success">
-                        <h3>✅ Ready to Scrape!</h3>
-                        <p>All systems configured. Database logging enabled.</p>
-                    </div>
-                    ` : `
-                    <div class="warning">
-                        <h3>⚠️ Running in Memory Mode</h3>
-                        <p>Database not available but scraping still works. Results stored in memory.</p>
-                    </div>
-                    `}
-                    
-                    <div class="config">
-                        <h3>Configuration</h3>
-                        <p>Batch Size: ${this.config.batchSize} URLs</p>
-                        <p>Delay: ${this.config.delayBetweenRequests / 1000}s</p>
-                        <p>Max Retries: ${this.config.maxRetries}</p>
-                    </div>
-                    <div class="urls">
-                        <h3>Monitoring ${this.urlsToMonitor.length} URLs</h3>
-                        ${this.urlsToMonitor.map(url => `<p>• ${url}</p>`).join('')}
-                    </div>
-                    
-                    <div class="config">
-                        <h3>Quick Actions</h3>
-                        <button onclick="triggerBatch()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                            🎯 Trigger Manual Batch
-                        </button>
-                        <div id="result" style="margin-top: 10px;"></div>
+                    <div class="container">
+                        <h1>🚀 ASICS Weekly Batch Scraper</h1>
                         
-                        <br><br>
-                        <button onclick="viewLogs()" style="padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                            📋 View Recent Logs
-                        </button>
-                        <div id="logs" style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px;"></div>
+                        <div class="card status">
+                            <h2>Status: Active ✅</h2>
+                            <p>Uptime: ${Math.floor(process.uptime() / 60)} minutes</p>
+                            <p>Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB</p>
+                            <p>Database: ${this.databaseEnabled ? '✅ Connected' : '⚠️ Memory-only mode'}</p>
+                            <p>ASICS Credentials: ${this.credentials.username ? '✅ Configured' : '⚠️ Missing'}</p>
+                        </div>
+                        
+                        ${this.databaseEnabled ? `
+                        <div class="card success">
+                            <h3>✅ Ready to Scrape!</h3>
+                            <p>All systems configured. Database logging enabled.</p>
+                        </div>
+                        ` : `
+                        <div class="card warning">
+                            <h3>⚠️ Running in Memory Mode</h3>
+                            <p>Database not available but scraping still works. Results stored in memory.</p>
+                        </div>
+                        `}
+                        
+                        <div class="card">
+                            <h3>📋 URL Management</h3>
+                            <div class="form-group">
+                                <label for="newUrl">Add New URL:</label>
+                                <div class="flex">
+                                    <input type="url" id="newUrl" class="form-control" placeholder="https://b2b.asics.com/us/en-us/..." />
+                                    <button onclick="addUrl()" class="btn btn-success">➕ Add URL</button>
+                                </div>
+                            </div>
+                            
+                            <h4>Current URLs (${this.urlsToMonitor.length}):</h4>
+                            <div id="urlList" class="url-list">
+                                ${this.urlsToMonitor.map((url, index) => `
+                                    <div class="url-item" data-index="${index}">
+                                        <span class="url-text">${url}</span>
+                                        <div>
+                                            <button onclick="editUrl(${index})" class="btn btn-warning">✏️ Edit</button>
+                                            <button onclick="deleteUrl(${index})" class="btn btn-danger">🗑️ Delete</button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            
+                            ${this.urlsToMonitor.length === 0 ? `
+                            <div class="warning" style="padding: 15px; margin: 10px 0;">
+                                <p><strong>No URLs configured!</strong> Add some ASICS B2B URLs above to start monitoring.</p>
+                                <p><strong>Example URLs:</strong></p>
+                                <ul>
+                                    <li>https://b2b.asics.com/us/en-us/mens-running-shoes</li>
+                                    <li>https://b2b.asics.com/us/en-us/womens-running-shoes</li>
+                                    <li>https://b2b.asics.com/us/en-us/mens-tennis-shoes</li>
+                                </ul>
+                            </div>
+                            ` : ''}
+                        </div>
+                        
+                        <div class="card">
+                            <h3>⚙️ Configuration</h3>
+                            <p>Batch Size: ${this.config.batchSize} URLs</p>
+                            <p>Delay: ${this.config.delayBetweenRequests / 1000}s</p>
+                            <p>Max Retries: ${this.config.maxRetries}</p>
+                        </div>
+                        
+                        <div class="card">
+                            <h3>🎯 Quick Actions</h3>
+                            <button onclick="triggerBatch()" class="btn btn-primary">
+                                🎯 Trigger Manual Batch
+                            </button>
+                            <button onclick="viewLogs()" class="btn btn-success">
+                                📋 View Recent Logs
+                            </button>
+                            <div id="result" style="margin-top: 10px;"></div>
+                            <div id="logs" class="logs hidden"></div>
+                        </div>
                     </div>
                     
                     <script>
+                        async function addUrl() {
+                            const urlInput = document.getElementById('newUrl');
+                            const url = urlInput.value.trim();
+                            
+                            if (!url) {
+                                alert('Please enter a URL');
+                                return;
+                            }
+                            
+                            if (!url.startsWith('http')) {
+                                alert('URL must start with http:// or https://');
+                                return;
+                            }
+                            
+                            try {
+                                const response = await fetch('/urls', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ url })
+                                });
+                                
+                                const data = await response.json();
+                                
+                                if (data.success) {
+                                    urlInput.value = '';
+                                    location.reload(); // Refresh page to show new URL
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            } catch (error) {
+                                alert('Error adding URL: ' + error.message);
+                            }
+                        }
+                        
+                        async function deleteUrl(index) {
+                            if (!confirm('Are you sure you want to delete this URL?')) {
+                                return;
+                            }
+                            
+                            try {
+                                const response = await fetch(\`/urls/\${index}\`, {
+                                    method: 'DELETE'
+                                });
+                                
+                                const data = await response.json();
+                                
+                                if (data.success) {
+                                    location.reload(); // Refresh page
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            } catch (error) {
+                                alert('Error deleting URL: ' + error.message);
+                            }
+                        }
+                        
+                        async function editUrl(index) {
+                            const currentUrl = document.querySelector(\`[data-index="\${index}"] .url-text\`).textContent;
+                            const newUrl = prompt('Edit URL:', currentUrl);
+                            
+                            if (!newUrl || newUrl === currentUrl) {
+                                return;
+                            }
+                            
+                            if (!newUrl.startsWith('http')) {
+                                alert('URL must start with http:// or https://');
+                                return;
+                            }
+                            
+                            try {
+                                const response = await fetch(\`/urls/\${index}\`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ url: newUrl })
+                                });
+                                
+                                const data = await response.json();
+                                
+                                if (data.success) {
+                                    location.reload(); // Refresh page
+                                } else {
+                                    alert('Error: ' + data.error);
+                                }
+                            } catch (error) {
+                                alert('Error updating URL: ' + error.message);
+                            }
+                        }
+                        
                         async function triggerBatch() {
                             const button = event.target;
                             const result = document.getElementById('result');
@@ -187,12 +330,12 @@ class ASICSWeeklyBatchScraper {
                                 const data = await response.json();
                                 
                                 if (data.success) {
-                                    result.innerHTML = '<div style="color: green;">✅ Batch started successfully! Check logs for progress.</div>';
+                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Batch started successfully! Check logs for progress.</div>';
                                 } else {
-                                    result.innerHTML = '<div style="color: red;">❌ ' + data.error + '</div>';
+                                    result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px; margin: 10px 0;">❌ ' + data.error + '</div>';
                                 }
                             } catch (error) {
-                                result.innerHTML = '<div style="color: red;">❌ ' + error.message + '</div>';
+                                result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px; margin: 10px 0;">❌ ' + error.message + '</div>';
                             }
                             
                             button.disabled = false;
@@ -201,6 +344,7 @@ class ASICSWeeklyBatchScraper {
                         
                         async function viewLogs() {
                             const logs = document.getElementById('logs');
+                            logs.classList.remove('hidden');
                             logs.innerHTML = 'Loading...';
                             
                             try {
@@ -209,24 +353,154 @@ class ASICSWeeklyBatchScraper {
                                 
                                 if (Array.isArray(data) && data.length > 0) {
                                     logs.innerHTML = data.map(log => 
-                                        \`<div><strong>\${log.created_at || log.timestamp || 'Unknown time'}:</strong> \${log.url} - \${log.status} (\${log.product_count || 0} products)</div>\`
+                                        \`<div style="margin: 5px 0; padding: 5px; border-left: 3px solid #007bff;"><strong>\${log.created_at || log.timestamp || 'Unknown time'}:</strong> \${log.url} - \${log.status} (\${log.product_count || 0} products)\${log.error_message ? ' - ' + log.error_message : ''}</div>\`
                                     ).join('');
                                 } else {
-                                    logs.innerHTML = 'No logs available yet. Try running a batch first.';
+                                    logs.innerHTML = '<div style="color: #666; font-style: italic;">No logs available yet. Try running a batch first.</div>';
                                 }
                             } catch (error) {
-                                logs.innerHTML = 'Error loading logs: ' + error.message;
+                                logs.innerHTML = '<div style="color: red;">Error loading logs: ' + error.message + '</div>';
                             }
                         }
+                        
+                        // Allow adding URLs with Enter key
+                        document.getElementById('newUrl').addEventListener('keypress', function(e) {
+                            if (e.key === 'Enter') {
+                                addUrl();
+                            }
+                        });
                     </script>
                 </body>
                 </html>
             `);
         });
 
+        // URL Management APIs
+        this.app.get('/urls', (req, res) => {
+            res.json({
+                success: true,
+                urls: this.urlsToMonitor,
+                count: this.urlsToMonitor.length
+            });
+        });
+
+        this.app.post('/urls', async (req, res) => {
+            try {
+                const { url } = req.body;
+                
+                if (!url || !url.startsWith('http')) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Valid URL required'
+                    });
+                }
+                
+                if (this.urlsToMonitor.includes(url)) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'URL already exists'
+                    });
+                }
+                
+                this.urlsToMonitor.push(url);
+                await this.saveUrlsToDatabase();
+                
+                console.log(`➕ Added URL: ${url}`);
+                res.json({
+                    success: true,
+                    message: 'URL added successfully',
+                    urls: this.urlsToMonitor
+                });
+                
+            } catch (error) {
+                console.error('Error adding URL:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        this.app.put('/urls/:index', async (req, res) => {
+            try {
+                const index = parseInt(req.params.index);
+                const { url } = req.body;
+                
+                if (index < 0 || index >= this.urlsToMonitor.length) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid URL index'
+                    });
+                }
+                
+                if (!url || !url.startsWith('http')) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Valid URL required'
+                    });
+                }
+                
+                const oldUrl = this.urlsToMonitor[index];
+                this.urlsToMonitor[index] = url;
+                await this.saveUrlsToDatabase();
+                
+                console.log(`✏️ Updated URL: ${oldUrl} -> ${url}`);
+                res.json({
+                    success: true,
+                    message: 'URL updated successfully',
+                    urls: this.urlsToMonitor
+                });
+                
+            } catch (error) {
+                console.error('Error updating URL:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
+        this.app.delete('/urls/:index', async (req, res) => {
+            try {
+                const index = parseInt(req.params.index);
+                
+                if (index < 0 || index >= this.urlsToMonitor.length) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'Invalid URL index'
+                    });
+                }
+                
+                const deletedUrl = this.urlsToMonitor.splice(index, 1)[0];
+                await this.saveUrlsToDatabase();
+                
+                console.log(`🗑️ Deleted URL: ${deletedUrl}`);
+                res.json({
+                    success: true,
+                    message: 'URL deleted successfully',
+                    deletedUrl,
+                    urls: this.urlsToMonitor
+                });
+                
+            } catch (error) {
+                console.error('Error deleting URL:', error);
+                res.status(500).json({
+                    success: false,
+                    error: error.message
+                });
+            }
+        });
+
         // Manual trigger
         this.app.post('/trigger', async (req, res) => {
             try {
+                if (this.urlsToMonitor.length === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'No URLs configured. Add some URLs first!'
+                    });
+                }
+                
                 console.log('🎯 Manual batch trigger received');
                 const batchId = `manual_${Date.now()}`;
                 
@@ -237,6 +511,7 @@ class ASICSWeeklyBatchScraper {
                     success: true, 
                     message: 'Batch started in background', 
                     batchId,
+                    urlCount: this.urlsToMonitor.length,
                     databaseEnabled: this.databaseEnabled
                 });
             } catch (error) {
@@ -270,6 +545,68 @@ class ASICSWeeklyBatchScraper {
         });
     }
 
+    async saveUrlsToDatabase() {
+        if (!this.databaseEnabled || !this.pool) {
+            console.log('📊 URLs saved to memory only (no database)');
+            return;
+        }
+
+        try {
+            // Clear existing URLs and save new ones
+            await this.pool.query('DELETE FROM monitored_urls');
+            
+            for (const url of this.urlsToMonitor) {
+                await this.pool.query(
+                    'INSERT INTO monitored_urls (url, created_at) VALUES ($1, $2)',
+                    [url, new Date()]
+                );
+            }
+            
+            console.log(`💾 Saved ${this.urlsToMonitor.length} URLs to database`);
+            
+        } catch (error) {
+            console.error('⚠️ Could not save URLs to database:', error.message);
+        }
+    }
+
+    async loadUrlsToMonitor() {
+        if (!this.databaseEnabled || !this.pool) {
+            this.setDefaultUrls();
+            return;
+        }
+
+        try {
+            // Try to load from monitored_urls table first
+            const result = await this.pool.query(`
+                SELECT url FROM monitored_urls 
+                ORDER BY created_at DESC
+            `);
+            
+            if (result.rows.length > 0) {
+                this.urlsToMonitor = result.rows.map(row => row.url);
+                console.log(`📋 Loaded ${this.urlsToMonitor.length} URLs from database`);
+            } else {
+                // Fallback to scrape_logs if monitored_urls is empty
+                const logResult = await this.pool.query(`
+                    SELECT DISTINCT url FROM scrape_logs 
+                    WHERE created_at > NOW() - INTERVAL '30 days'
+                    LIMIT 100
+                `);
+                
+                if (logResult.rows.length > 0) {
+                    this.urlsToMonitor = logResult.rows.map(row => row.url);
+                    console.log(`📋 Loaded ${this.urlsToMonitor.length} URLs from scrape logs`);
+                } else {
+                    this.setDefaultUrls();
+                }
+            }
+            
+        } catch (error) {
+            console.error('⚠️ Could not load URLs from database, using defaults:', error.message);
+            this.setDefaultUrls();
+        }
+    }
+
     async initializeDatabase() {
         if (!this.databaseEnabled || !this.pool) {
             console.log('📊 Running in memory-only mode');
@@ -285,7 +622,21 @@ class ASICSWeeklyBatchScraper {
             console.log('✅ Database connection successful!');
             console.log('   Time:', testResult.rows[0].current_time);
             
-            // Try to create basic scrape_logs table - but don't crash if it fails
+            // Create monitored_urls table
+            try {
+                await this.pool.query(`
+                    CREATE TABLE IF NOT EXISTS monitored_urls (
+                        id SERIAL PRIMARY KEY,
+                        url VARCHAR(1000) NOT NULL UNIQUE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                `);
+                console.log('✅ Monitored URLs table ready');
+            } catch (tableError) {
+                console.log('⚠️ Could not create monitored_urls table:', tableError.message);
+            }
+            
+            // Try to create basic scrape_logs table
             try {
                 await this.pool.query(`
                     CREATE TABLE IF NOT EXISTS scrape_logs (
@@ -303,7 +654,7 @@ class ASICSWeeklyBatchScraper {
                 console.log('⚠️ Could not create scrape_logs table:', tableError.message);
             }
 
-            // Try to create products table - but don't crash if it fails
+            // Try to create products table
             try {
                 await this.pool.query(`
                     CREATE TABLE IF NOT EXISTS products (
@@ -323,7 +674,7 @@ class ASICSWeeklyBatchScraper {
                 console.log('⚠️ Could not create products table:', tableError.message);
             }
 
-            console.log('✅ Database initialization completed (with any available tables)');
+            console.log('✅ Database initialization completed');
             
         } catch (error) {
             console.error('⚠️ Database initialization failed:', error.message);
@@ -348,6 +699,11 @@ class ASICSWeeklyBatchScraper {
     async startWeeklyBatch(batchId) {
         const startTime = Date.now();
         console.log(`🚀 Starting weekly batch ${batchId}: ${this.urlsToMonitor.length} URLs`);
+        
+        if (this.urlsToMonitor.length === 0) {
+            console.log('⚠️ No URLs configured - skipping batch');
+            return;
+        }
         
         try {
             // Split URLs into mini-batches
