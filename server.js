@@ -982,27 +982,54 @@ class ASICSWeeklyBatchScraper {
 
             console.log(`🔐 [${serviceType}] Submitting login form...`);
             
-            // More robust form submission
+            // More robust form submission - don't wait for navigation
             try {
-                // Try to find and click submit button first
-                const submitButton = await page.$('button[type="submit"], input[type="submit"], button:contains("Sign In"), button:contains("Login")');
+                // Try to find and click submit button
+                const submitButton = await page.$('button[type="submit"], input[type="submit"], button');
                 if (submitButton) {
                     console.log(`🔘 [${serviceType}] Found submit button, clicking...`);
-                    await Promise.race([
-                        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
-                        submitButton.click()
-                    ]);
+                    await submitButton.click();
                 } else {
                     console.log(`⌨️ [${serviceType}] No submit button found, trying Enter key...`);
-                    await Promise.race([
-                        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
-                        page.keyboard.press('Enter')
-                    ]);
+                    await page.keyboard.press('Enter');
                 }
-            } catch (navError) {
-                console.log(`⏳ [${serviceType}] Navigation might have succeeded despite error:`, navError.message);
-                // Give it a moment to settle
-                await page.waitForTimeout(3000);
+                
+                // Wait a bit for the submission to process
+                await page.waitForTimeout(5000);
+                
+                // Check if we're still on the login page or redirected
+                const currentUrl = page.url();
+                console.log(`🔍 [${serviceType}] After login attempt, current URL: ${currentUrl}`);
+                
+                // If we're still on login page, login likely failed
+                if (currentUrl.includes('login') || currentUrl.includes('authentication')) {
+                    // Check for error messages
+                    const errorMsg = await page.evaluate(() => {
+                        const errorElements = document.querySelectorAll('.error, .alert, [class*="error"], [class*="alert"]');
+                        return Array.from(errorElements).map(el => el.textContent.trim()).join('; ');
+                    });
+                    
+                    if (errorMsg) {
+                        throw new Error(`Login failed with error: ${errorMsg}`);
+                    } else {
+                        throw new Error('Still on login page after submission - credentials may be incorrect');
+                    }
+                }
+                
+            } catch (submitError) {
+                console.error(`❌ [${serviceType}] Form submission error:`, submitError.message);
+                
+                // Try one more approach - direct navigation wait
+                try {
+                    console.log(`🔄 [${serviceType}] Trying alternative navigation approach...`);
+                    await page.waitForFunction(
+                        () => !window.location.href.includes('login') && !window.location.href.includes('authentication'),
+                        { timeout: 15000 }
+                    );
+                    console.log(`✅ [${serviceType}] Successfully navigated away from login`);
+                } catch (navError) {
+                    throw new Error(`Login failed: ${submitError.message}`);
+                }
             }
 
             const finalUrl = page.url();
