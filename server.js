@@ -44,8 +44,21 @@ class ASICSWeeklyBatchScraper {
 
         // Browserless Cloud configuration
         this.browserlessToken = process.env.BROWSERLESS_TOKEN;
-        this.browserlessEndpoint = process.env.BROWSERLESS_ENDPOINT || 
-            (this.browserlessToken ? `wss://chrome.browserless.io?token=${this.browserlessToken}` : 'ws://browserless:3000');
+        
+        if (process.env.BROWSERLESS_ENDPOINT) {
+            this.browserlessEndpoint = process.env.BROWSERLESS_ENDPOINT;
+            // If it's a cloud endpoint but doesn't have a token, add it
+            if (this.browserlessEndpoint.includes('browserless.io') && this.browserlessToken && !this.browserlessEndpoint.includes('token=')) {
+                this.browserlessEndpoint += `?token=${this.browserlessToken}`;
+            }
+        } else if (this.browserlessToken) {
+            // Build cloud endpoint with token
+            this.browserlessEndpoint = `wss://chrome.browserless.io?token=${this.browserlessToken}`;
+        } else {
+            // Default to self-hosted
+            this.browserlessEndpoint = 'ws://browserless:3000';
+        }
+        
         this.isSelfHosted = !this.browserlessEndpoint.includes('browserless.io');
 
         if (!this.credentials.username || !this.credentials.password) {
@@ -449,12 +462,50 @@ class ASICSWeeklyBatchScraper {
             `);
         });
 
-        // Test Browserless connection endpoint
+        // Test Browserless connection endpoint with detailed debugging
         this.app.get('/test-browserless', async (req, res) => {
             try {
                 const serviceType = this.isSelfHosted ? 'self-hosted' : 'cloud';
                 console.log(`🧪 Testing ${serviceType} Browserless connection...`);
+                console.log(`🔗 Endpoint: ${this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***')}`);
+                console.log(`🔑 Token present: ${this.browserlessToken ? 'YES' : 'NO'}`);
                 
+                // First, test the REST API to see if token works
+                if (!this.isSelfHosted && this.browserlessToken) {
+                    console.log('🔍 Testing REST API first...');
+                    try {
+                        const fetch = require('https').get;
+                        const testResponse = await new Promise((resolve, reject) => {
+                            const req = require('https').get(
+                                `https://production-sfo.browserless.io/json/version?token=${this.browserlessToken}`,
+                                (res) => {
+                                    let data = '';
+                                    res.on('data', (chunk) => data += chunk);
+                                    res.on('end', () => resolve({ status: res.statusCode, data }));
+                                }
+                            );
+                            req.on('error', reject);
+                            req.setTimeout(10000, () => reject(new Error('Timeout')));
+                        });
+                        
+                        console.log(`📊 REST API response: ${testResponse.status}`);
+                        if (testResponse.status !== 200) {
+                            return res.json({
+                                success: false,
+                                error: `REST API failed with status ${testResponse.status}`,
+                                details: testResponse.data
+                            });
+                        }
+                    } catch (restError) {
+                        console.error('❌ REST API test failed:', restError.message);
+                        return res.json({
+                            success: false,
+                            error: `REST API test failed: ${restError.message}`
+                        });
+                    }
+                }
+                
+                console.log('🔌 Testing WebSocket connection...');
                 const browser = await puppeteer.connect({
                     browserWSEndpoint: this.browserlessEndpoint
                 });
@@ -465,11 +516,22 @@ class ASICSWeeklyBatchScraper {
                 await browser.close();
                 
                 console.log(`✅ ${serviceType} Browserless connection successful!`);
-                res.json({ success: true, message: `${serviceType} Browserless connection successful`, title });
+                res.json({ 
+                    success: true, 
+                    message: `${serviceType} Browserless connection successful`, 
+                    title,
+                    endpoint: this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***')
+                });
                 
             } catch (error) {
                 console.error(`❌ Browserless connection failed:`, error.message);
-                res.json({ success: false, error: error.message });
+                console.error(`🔗 Failed endpoint: ${this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***')}`);
+                res.json({ 
+                    success: false, 
+                    error: error.message,
+                    endpoint: this.browserlessEndpoint.replace(/token=[^&]+/, 'token=***'),
+                    tokenPresent: !!this.browserlessToken
+                });
             }
         });
 
@@ -886,16 +948,32 @@ class ASICSWeeklyBatchScraper {
                     console.log(`⏳ [${serviceType}] Waiting for login form...`);
                     await page.waitForSelector('input[type="password"]', { timeout: 10000 });
                     console.log(`✅ [${serviceType}] Login form appeared`);
+                    
+                    // Debug: Let's see what inputs are available now
+                    const availableInputs = await page.evaluate(() => {
+                        const inputs = Array.from(document.querySelectorAll('input'));
+                        return inputs.map(input => ({
+                            type: input.type,
+                            name: input.name,
+                            id: input.id,
+                            placeholder: input.placeholder,
+                            className: input.className
+                        }));
+                    });
+                    console.log(`🔍 [${serviceType}] Available inputs:`, availableInputs);
+                    
                 } catch (e) {
                     throw new Error('Login form did not appear after country selection');
                 }
             }
 
-            // Find and fill login fields
-            const usernameSelector = 'input[type="email"], input[name*="username"], input[name*="user"]';
+            // Find and fill login fields with more flexible selectors
+            const usernameSelector = 'input[type="email"], input[type="text"], input[name*="username"], input[name*="user"], input[name*="email"], input[id*="username"], input[id*="email"], input[placeholder*="email"], input[placeholder*="username"]';
             const passwordSelector = 'input[type="password"]';
 
-            await page.waitForSelector(usernameSelector, { timeout: 10000 });
+            console.log(`🔍 [${serviceType}] Looking for username field...`);
+            await page.waitForSelector(usernameSelector, { timeout: 15000 });
+            console.log(`🔍 [${serviceType}] Looking for password field...`);
             await page.waitForSelector(passwordSelector, { timeout: 10000 });
 
             console.log(`📝 [${serviceType}] Filling in credentials...`);
