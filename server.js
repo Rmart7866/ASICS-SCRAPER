@@ -240,57 +240,25 @@ class ASICSWeeklyBatchScraper {
             console.log('   Time:', testResult.rows[0].current_time);
             console.log('   PostgreSQL:', testResult.rows[0].postgres_version.split(' ')[0]);
             
-            // Create scrape_logs table with all necessary columns
-            await this.pool.query(`
-                CREATE TABLE IF NOT EXISTS scrape_logs (
-                    id SERIAL PRIMARY KEY,
-                    batch_id VARCHAR(255),
-                    url VARCHAR(1000) NOT NULL,
-                    status VARCHAR(50) NOT NULL DEFAULT 'pending',
-                    product_count INTEGER DEFAULT 0,
-                    error_message TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
-
-            // Add batch_id column if it doesn't exist (for existing installations)
-            try {
-                await this.pool.query(`
-                    ALTER TABLE scrape_logs 
-                    ADD COLUMN IF NOT EXISTS batch_id VARCHAR(255)
-                `);
-            } catch (alterError) {
-                console.log('   batch_id column already exists or could not be added');
-            }
-
-            // Create indexes for better performance
-            await this.pool.query(`
-                CREATE INDEX IF NOT EXISTS idx_scrape_logs_batch_id 
-                ON scrape_logs(batch_id)
+            // Check existing tables first
+            console.log('🔍 Checking existing database schema...');
+            const existingTables = await this.pool.query(`
+                SELECT table_name, column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_schema = 'public' 
+                ORDER BY table_name, ordinal_position
             `);
             
-            await this.pool.query(`
-                CREATE INDEX IF NOT EXISTS idx_scrape_logs_status 
-                ON scrape_logs(status)
-            `);
-
-            // Create products table (optional, for storing actual product data)
-            await this.pool.query(`
-                CREATE TABLE IF NOT EXISTS products (
-                    id SERIAL PRIMARY KEY,
-                    batch_id VARCHAR(255),
-                    url VARCHAR(1000),
-                    sku VARCHAR(255) UNIQUE,
-                    name VARCHAR(500),
-                    price VARCHAR(100),
-                    description TEXT,
-                    image_url VARCHAR(1000),
-                    availability VARCHAR(100),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
+            console.log('📋 Existing schema:', existingTables.rows.length > 0 ? 'Found existing tables' : 'No tables found');
+            
+            // Create scrape_logs table safely
+            await this.createScrapeLogsTable();
+            
+            // Create products table safely  
+            await this.createProductsTable();
+            
+            // Create indexes safely
+            await this.createIndexesSafely();
 
             console.log('✅ Database tables ready');
             
@@ -304,6 +272,147 @@ class ASICSWeeklyBatchScraper {
                 message: error.message
             });
             process.exit(1);
+        }
+    }
+
+    async createScrapeLogsTable() {
+        try {
+            console.log('📊 Setting up scrape_logs table...');
+            
+            // Create table if not exists
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS scrape_logs (
+                    id SERIAL PRIMARY KEY,
+                    url VARCHAR(1000) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            
+            // Add columns safely one by one
+            const columnsToAdd = [
+                { name: 'batch_id', type: 'VARCHAR(255)' },
+                { name: 'status', type: 'VARCHAR(50) DEFAULT \'pending\'' },
+                { name: 'product_count', type: 'INTEGER DEFAULT 0' },
+                { name: 'error_message', type: 'TEXT' },
+                { name: 'updated_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+            ];
+            
+            for (const column of columnsToAdd) {
+                try {
+                    await this.pool.query(`
+                        ALTER TABLE scrape_logs 
+                        ADD COLUMN IF NOT EXISTS ${column.name} ${column.type}
+                    `);
+                    console.log(`   ✅ Column ${column.name} ready`);
+                } catch (columnError) {
+                    if (columnError.code === '42701') {
+                        console.log(`   ✅ Column ${column.name} already exists`);
+                    } else {
+                        console.log(`   ⚠️ Column ${column.name} issue:`, columnError.message);
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error setting up scrape_logs table:', error.message);
+            throw error;
+        }
+    }
+
+    async createProductsTable() {
+        try {
+            console.log('📦 Setting up products table...');
+            
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS products (
+                    id SERIAL PRIMARY KEY,
+                    batch_id VARCHAR(255),
+                    url VARCHAR(1000),
+                    sku VARCHAR(255),
+                    name VARCHAR(500),
+                    price VARCHAR(100),
+                    description TEXT,
+                    image_url VARCHAR(1000),
+                    availability VARCHAR(100),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            
+            // Add unique constraint on sku safely
+            try {
+                await this.pool.query(`
+                    ALTER TABLE products 
+                    ADD CONSTRAINT products_sku_unique UNIQUE (sku)
+                `);
+                console.log('   ✅ SKU unique constraint added');
+            } catch (constraintError) {
+                if (constraintError.code === '42P07') {
+                    console.log('   ✅ SKU unique constraint already exists');
+                } else {
+                    console.log('   ⚠️ SKU constraint issue:', constraintError.message);
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error setting up products table:', error.message);
+            throw error;
+        }
+    }
+
+    async createIndexesSafely() {
+        try {
+            console.log('🔍 Setting up database indexes...');
+            
+            const indexes = [
+                {
+                    name: 'idx_scrape_logs_batch_id',
+                    table: 'scrape_logs',
+                    column: 'batch_id'
+                },
+                {
+                    name: 'idx_scrape_logs_status',
+                    table: 'scrape_logs', 
+                    column: 'status'
+                },
+                {
+                    name: 'idx_scrape_logs_created_at',
+                    table: 'scrape_logs',
+                    column: 'created_at'
+                }
+            ];
+            
+            for (const index of indexes) {
+                try {
+                    // Check if column exists first
+                    const columnCheck = await this.pool.query(`
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = $1 AND column_name = $2
+                    `, [index.table, index.column]);
+                    
+                    if (columnCheck.rows.length > 0) {
+                        await this.pool.query(`
+                            CREATE INDEX IF NOT EXISTS ${index.name} 
+                            ON ${index.table}(${index.column})
+                        `);
+                        console.log(`   ✅ Index ${index.name} ready`);
+                    } else {
+                        console.log(`   ⚠️ Skipping index ${index.name} - column ${index.column} doesn't exist`);
+                    }
+                    
+                } catch (indexError) {
+                    if (indexError.code === '23505' || indexError.code === '42P07') {
+                        console.log(`   ✅ Index ${index.name} already exists`);
+                    } else {
+                        console.log(`   ⚠️ Index ${index.name} issue:`, indexError.message);
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('❌ Error setting up indexes:', error.message);
+            // Don't throw - indexes are nice to have but not critical
         }
     }
 
@@ -826,7 +935,7 @@ class ASICSWeeklyBatchScraper {
         }
     }
 
-    // Fixed logging function that handles missing batch_id column gracefully
+    // Fixed logging function that handles missing columns gracefully
     async logScrapeResults(results, batchId = null) {
         if (!results || results.length === 0) {
             console.log('📊 No results to log');
@@ -834,93 +943,60 @@ class ASICSWeeklyBatchScraper {
         }
 
         try {
-            // First, check if batch_id column exists
-            const columnCheckQuery = `
+            // Check which columns exist in scrape_logs table
+            const columnsQuery = await this.pool.query(`
                 SELECT column_name 
                 FROM information_schema.columns 
-                WHERE table_name = 'scrape_logs' 
-                AND column_name = 'batch_id'
+                WHERE table_name = 'scrape_logs'
+            `);
+            
+            const existingColumns = columnsQuery.rows.map(row => row.column_name);
+            console.log('📋 Available columns:', existingColumns);
+            
+            // Build dynamic insert query based on available columns
+            const baseColumns = ['url', 'created_at'];
+            const optionalColumns = ['batch_id', 'status', 'product_count', 'error_message'];
+            
+            const columnsToUse = baseColumns.concat(
+                optionalColumns.filter(col => existingColumns.includes(col))
+            );
+            
+            const placeholders = columnsToUse.map((_, index) => `$${index + 1}`).join(', ');
+            const insertQuery = `
+                INSERT INTO scrape_logs (${columnsToUse.join(', ')})
+                VALUES (${placeholders})
             `;
             
-            const columnExists = await this.pool.query(columnCheckQuery);
-            const hasBatchIdColumn = columnExists.rows.length > 0;
-
-            // Prepare the insert query based on whether batch_id column exists
-            let insertQuery;
-            let values;
-
-            if (hasBatchIdColumn && batchId) {
-                // Include batch_id in the insert
-                insertQuery = `
-                    INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                `;
+            console.log('📝 Using columns:', columnsToUse);
+            
+            for (const result of results) {
+                const values = [
+                    result.url,
+                    new Date()
+                ];
                 
-                for (const result of results) {
-                    values = [
-                        batchId,
-                        result.url,
-                        result.status || 'completed',
-                        result.productCount || result.products?.length || 0,
-                        result.error || null,
-                        new Date()
-                    ];
-                    
-                    await this.pool.query(insertQuery, values);
+                // Add optional values based on available columns
+                if (existingColumns.includes('batch_id')) {
+                    values.push(batchId);
                 }
-            } else {
-                // Insert without batch_id column
-                insertQuery = `
-                    INSERT INTO scrape_logs (url, status, product_count, error_message, created_at)
-                    VALUES ($1, $2, $3, $4, $5)
-                `;
+                if (existingColumns.includes('status')) {
+                    values.push(result.status || 'completed');
+                }
+                if (existingColumns.includes('product_count')) {
+                    values.push(result.productCount || result.products?.length || 0);
+                }
+                if (existingColumns.includes('error_message')) {
+                    values.push(result.error || null);
+                }
                 
-                for (const result of results) {
-                    values = [
-                        result.url,
-                        result.status || 'completed',
-                        result.productCount || result.products?.length || 0,
-                        result.error || null,
-                        new Date()
-                    ];
-                    
-                    await this.pool.query(insertQuery, values);
-                }
+                await this.pool.query(insertQuery, values);
             }
 
             console.log(`✅ Logged ${results.length} scrape results to database`);
             
         } catch (error) {
             console.error('❌ Error logging scrape results:', error.message);
-            
-            // Fallback: try to log without batch_id if the error is column-related
-            if (error.message.includes('batch_id') && error.message.includes('does not exist')) {
-                console.log('🔄 Retrying without batch_id column...');
-                
-                try {
-                    const fallbackQuery = `
-                        INSERT INTO scrape_logs (url, status, product_count, error_message, created_at)
-                        VALUES ($1, $2, $3, $4, $5)
-                    `;
-                    
-                    for (const result of results) {
-                        const fallbackValues = [
-                            result.url,
-                            result.status || 'completed',
-                            result.productCount || result.products?.length || 0,
-                            result.error || null,
-                            new Date()
-                        ];
-                        
-                        await this.pool.query(fallbackQuery, fallbackValues);
-                    }
-                    
-                    console.log(`✅ Logged ${results.length} scrape results (fallback method)`);
-                    
-                } catch (fallbackError) {
-                    console.error('❌ Fallback logging also failed:', fallbackError.message);
-                }
-            }
+            console.log('📊 Results saved to memory instead');
         }
     }
 
