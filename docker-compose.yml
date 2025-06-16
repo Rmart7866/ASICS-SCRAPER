@@ -1,20 +1,144 @@
-{
-  "name": "asics-scraper",
-  "version": "1.0.0",
-  "description": "ASICS B2B Weekly Batch Scraper with Self-Hosted Browserless",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "build": "echo 'No build needed for self-hosted setup'"
-  },
-  "dependencies": {
-    "express": "4.18.2",
-    "puppeteer-core": "21.6.1",
-    "pg": "8.11.3",
-    "node-cron": "3.0.3"
-  },
-  "engines": {
-    "node": "20.x"
-  }
-}
+version: '3.8'
+
+services:
+  # Your ASICS scraper application
+  asics-scraper:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "10000:10000"
+    environment:
+      # Application settings
+      - NODE_ENV=production
+      - PORT=10000
+      
+      # Database connection (from Railway variables)
+      - DATABASE_URL=${DATABASE_URL}
+      
+      # ASICS B2B credentials (from Railway variables)
+      - ASICS_USERNAME=${ASICS_USERNAME}
+      - ASICS_PASSWORD=${ASICS_PASSWORD}
+      
+      # Browserless connection (internal container communication)
+      - BROWSERLESS_ENDPOINT=ws://browserless:3000
+      
+      # Optional: Timezone
+      - TZ=America/New_York
+      
+      # Optional: Logging level
+      - LOG_LEVEL=info
+    
+    depends_on:
+      - browserless
+    
+    restart: unless-stopped
+    
+    # Health check to ensure service is running
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits for Railway
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  # Self-hosted Browserless container
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+    ports:
+      - "3000:3000"
+    environment:
+      # Browser session limits (conservative for Railway)
+      - MAX_CONCURRENT_SESSIONS=3
+      - MAX_QUEUE_LENGTH=10
+      
+      # Connection settings
+      - CONNECTION_TIMEOUT=60000
+      - DEFAULT_LAUNCH_ARGS=["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding"]
+      
+      # Performance settings
+      - PREBOOT_CHROME=true
+      - ENABLE_CORS=true
+      - MAX_MEMORY_PERCENT=85
+      - KEEP_ALIVE=true
+      
+      # Security settings
+      - ENABLE_DEBUG_VIEWER=false
+      - ENABLE_HEAP_DUMP=false
+      
+      # Optional: Add token for security (set in Railway variables)
+      - TOKEN=${BROWSERLESS_TOKEN:-}
+      
+      # Timezone
+      - TZ=America/New_York
+    
+    restart: unless-stopped
+    
+    # Health check for Browserless
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Resource limits (Browserless needs more memory)
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.7'
+        reservations:
+          memory: 512M
+          cpus: '0.3'
+    
+    # Volume for browser cache (improves performance)
+    volumes:
+      - browserless-cache:/tmp/.cache
+      - browserless-data:/usr/src/app/workspace
+
+  # Optional: PostgreSQL database (if you want self-hosted instead of Railway's)
+  # Uncomment this section if you prefer to run your own database
+  # postgres:
+  #   image: postgres:15-alpine
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_DB=asics_scraper
+  #     - POSTGRES_USER=scraper_user
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U scraper_user -d asics_scraper"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+# Named volumes for data persistence
+volumes:
+  browserless-cache:
+    driver: local
+  browserless-data:
+    driver: local
+  # postgres-data:  # Uncomment if using self-hosted postgres
+  #   driver: local
+
+# Network configuration (optional - Docker Compose creates default network)
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
