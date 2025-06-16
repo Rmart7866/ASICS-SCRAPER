@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
 const cron = require('node-cron');
 const path = require('path');
@@ -341,6 +341,7 @@ class ASICSWeeklyBatchScraper {
         console.log('🔧 Using FIXED authentication method...');
         const browser = await puppeteer.launch({
             headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -349,7 +350,10 @@ class ASICSWeeklyBatchScraper {
                 '--no-first-run',
                 '--no-zygote',
                 '--single-process',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-extensions',
+                '--disable-plugins'
             ]
         });
 
