@@ -1,7 +1,7 @@
 {
   "name": "asics-scraper",
   "version": "1.0.0",
-  "description": "ASICS scraper",
+  "description": "ASICS B2B Weekly Batch Scraper",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
