@@ -1,32 +1,19 @@
 {
-  "name": "asics-weekly-batch-scraper",
+  "name": "asics-scraper",
   "version": "1.0.0",
-  "description": "Weekly batch scraper for ASICS B2B inventory with hundreds of URLs",
+  "description": "ASICS scraper",
   "main": "server.js",
   "scripts": {
-    "start": "node --expose-gc server.js",
-    "build": "./render-build.sh",
-    "dev": "node --expose-gc server.js",
-    "test": "node --expose-gc test-scraper.js"
+    "start": "node server.js",
+    "build": "./render-build.sh"
   },
   "dependencies": {
-    "puppeteer-core": "^21.6.1",
-    "@sparticuz/chromium": "^119.0.2",
-    "express": "^4.18.2",
-    "node-cron": "^3.0.3",
-    "pg": "^8.11.3",
-    "cors": "^2.8.5"
+    "express": "4.18.2",
+    "puppeteer": "21.11.0",
+    "pg": "8.11.3",
+    "node-cron": "3.0.3"
   },
   "engines": {
     "node": "20.x"
-  },
-  "keywords": [
-    "web-scraping",
-    "asics",
-    "inventory",
-    "automation",
-    "batch-processing"
-  ],
-  "author": "Your Name",
-  "license": "MIT"
+  }
 }
