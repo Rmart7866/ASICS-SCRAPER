@@ -42,42 +42,39 @@ services:
       retries: 3
       start_period: 40s
     
-    # Resource limits for Railway
+    # Resource limits for Railway TRIAL
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '0.5'
+          memory: 450M  # Reduced for trial
+          cpus: '0.8'
         reservations:
-          memory: 256M
-          cpus: '0.25'
+          memory: 200M
+          cpus: '0.4'
 
-  # Self-hosted Browserless container
+  # Self-hosted Browserless container (TRIAL OPTIMIZED)
   browserless:
     image: ghcr.io/browserless/chromium:latest
     ports:
       - "3000:3000"
     environment:
-      # Browser session limits (conservative for Railway)
-      - MAX_CONCURRENT_SESSIONS=3
-      - MAX_QUEUE_LENGTH=10
+      # Browser session limits (VERY conservative for trial)
+      - MAX_CONCURRENT_SESSIONS=1  # Only 1 session at a time
+      - MAX_QUEUE_LENGTH=5
       
       # Connection settings
       - CONNECTION_TIMEOUT=60000
-      - DEFAULT_LAUNCH_ARGS=["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding"]
+      - DEFAULT_LAUNCH_ARGS=["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--disable-background-timer-throttling","--disable-backgrounding-occluded-windows","--disable-renderer-backgrounding","--memory-pressure-off","--max_old_space_size=400"]
       
-      # Performance settings
-      - PREBOOT_CHROME=true
+      # Performance settings (memory-optimized)
+      - PREBOOT_CHROME=false  # Save memory on startup
       - ENABLE_CORS=true
-      - MAX_MEMORY_PERCENT=85
-      - KEEP_ALIVE=true
+      - MAX_MEMORY_PERCENT=80
+      - KEEP_ALIVE=false  # Don't keep browsers alive to save memory
       
       # Security settings
       - ENABLE_DEBUG_VIEWER=false
       - ENABLE_HEAP_DUMP=false
-      
-      # Optional: Add token for security (set in Railway variables)
-      - TOKEN=${BROWSERLESS_TOKEN:-}
       
       # Timezone
       - TZ=America/New_York
@@ -92,53 +89,26 @@ services:
       retries: 3
       start_period: 60s
     
-    # Resource limits (Browserless needs more memory)
+    # Resource limits (TRIAL OPTIMIZED)
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 450M  # Reduced from 1G
           cpus: '0.7'
         reservations:
-          memory: 512M
+          memory: 300M
           cpus: '0.3'
     
-    # Volume for browser cache (improves performance)
+    # Minimal volumes for trial
     volumes:
       - browserless-cache:/tmp/.cache
-      - browserless-data:/usr/src/app/workspace
-
-  # Optional: PostgreSQL database (if you want self-hosted instead of Railway's)
-  # Uncomment this section if you prefer to run your own database
-  # postgres:
-  #   image: postgres:15-alpine
-  #   ports:
-  #     - "5432:5432"
-  #   environment:
-  #     - POSTGRES_DB=asics_scraper
-  #     - POSTGRES_USER=scraper_user
-  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-  #   volumes:
-  #     - postgres-data:/var/lib/postgresql/data
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U scraper_user -d asics_scraper"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
 
 # Named volumes for data persistence
 volumes:
   browserless-cache:
     driver: local
-  browserless-data:
-    driver: local
-  # postgres-data:  # Uncomment if using self-hosted postgres
-  #   driver: local
 
-# Network configuration (optional - Docker Compose creates default network)
+# Network configuration
 networks:
   default:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
