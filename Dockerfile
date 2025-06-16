@@ -28,7 +28,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Set default environment variables
 ENV NODE_ENV=production
-ENV BROWSERLESS_ENDPOINT=ws://browserless:3000
+
 
 # Start the application
 CMD ["node", "server.js"]
