@@ -1,37 +1,24 @@
 #!/bin/bash
 
-echo "🚀 Starting Render build for ASICS Weekly Batch Scraper..."
-echo "📊 Available memory: 61Gi"
+echo "🚀 Starting FAST Render build for ASICS Scraper..."
 
-# Clean and install
-echo "📦 Installing dependencies..."
-rm -rf node_modules package-lock.json
+# Quick install without cache
+echo "📦 Fast installing dependencies..."
+npm install --no-audit --no-fund --prefer-offline
 
-# Install with verbose output
-npm install --verbose
-
-# Force install puppeteer if missing
-if [ ! -d "node_modules/puppeteer" ]; then
-    echo "🔧 Force installing puppeteer..."
-    npm install puppeteer@21.11.0 --force
-fi
-
-# Quick dependency check
-echo "🔍 Verifying dependencies..."
+# Quick check
+echo "🔍 Quick dependency check..."
 node -e "
-const deps = ['express', 'puppeteer', 'pg', 'node-cron'];
-deps.forEach(dep => {
-  try {
-    require(dep);
-    console.log('✅', dep);
-  } catch (e) {
-    console.log('❌', dep, 'MISSING');
-    process.exit(1);
-  }
-});
-console.log('✅ All critical dependencies verified');
+try {
+  require('express');
+  require('puppeteer-core');
+  require('pg');
+  require('node-cron');
+  console.log('✅ All dependencies ready');
+} catch (e) {
+  console.log('❌ Missing:', e.message);
+  process.exit(1);
+}
 "
 
-echo "✅ Render build complete - ready for weekly batch scraping"
-echo "🎯 Optimized for: Starter tier (512MB RAM)"
-echo "📅 Designed for: Weekly batches of hundreds of URLs"
+echo "✅ Fast build complete"
