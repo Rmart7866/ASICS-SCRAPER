@@ -1,11 +1,12 @@
 {
   "name": "asics-scraper",
   "version": "1.0.0",
-  "description": "ASICS B2B Weekly Batch Scraper with Browserless",
+  "description": "ASICS B2B Weekly Batch Scraper with Self-Hosted Browserless",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "./render-build.sh"
+    "dev": "node server.js",
+    "build": "echo 'No build needed for self-hosted setup'"
   },
   "dependencies": {
     "express": "4.18.2",
