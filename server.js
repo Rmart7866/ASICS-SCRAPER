@@ -10,7 +10,24 @@ class ASICSWeeklyBatchScraper {
         this.app = express();
         this.port = process.env.PORT || 10000;
         
+        // Debug environment variables first
+        console.log('🔍 Environment Variables Check:');
+        console.log('   NODE_ENV:', process.env.NODE_ENV);
+        console.log('   DB_HOST:', process.env.DB_HOST ? 'SET' : 'NOT SET');
+        console.log('   DB_PORT:', process.env.DB_PORT || '5432 (default)');
+        console.log('   DB_NAME:', process.env.DB_NAME ? 'SET' : 'NOT SET');
+        console.log('   DB_USER:', process.env.DB_USER ? 'SET' : 'NOT SET');
+        console.log('   DB_PASSWORD:', process.env.DB_PASSWORD ? 'SET' : 'NOT SET');
+        console.log('   ASICS_USERNAME:', process.env.ASICS_USERNAME ? 'SET' : 'NOT SET');
+        console.log('   ASICS_PASSWORD:', process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET');
+        
         // Database configuration
+        if (!process.env.DB_HOST || !process.env.DB_NAME || !process.env.DB_USER || !process.env.DB_PASSWORD) {
+            console.error('❌ Missing required database environment variables!');
+            console.error('   Required: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD');
+            process.exit(1);
+        }
+        
         this.pool = new Pool({
             host: process.env.DB_HOST,
             port: process.env.DB_PORT || 5432,
@@ -20,7 +37,15 @@ class ASICSWeeklyBatchScraper {
             ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
             max: 10,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 2000,
+            connectionTimeoutMillis: 10000,
+        });
+
+        console.log('🗄️ Database configuration loaded:', {
+            host: process.env.DB_HOST,
+            port: process.env.DB_PORT || 5432,
+            database: process.env.DB_NAME,
+            user: process.env.DB_USER,
+            ssl: process.env.NODE_ENV === 'production' ? 'enabled' : 'disabled'
         });
 
         // ASICS credentials
@@ -28,6 +53,11 @@ class ASICSWeeklyBatchScraper {
             username: process.env.ASICS_USERNAME,
             password: process.env.ASICS_PASSWORD
         };
+
+        if (!this.credentials.username || !this.credentials.password) {
+            console.warn('⚠️ ASICS credentials not set - authentication will fail');
+            console.warn('   Set ASICS_USERNAME and ASICS_PASSWORD environment variables');
+        }
 
         // Scraping configuration
         this.config = {
@@ -70,7 +100,13 @@ class ASICSWeeklyBatchScraper {
                 uptime: process.uptime(),
                 memory: process.memoryUsage(),
                 config: this.config,
-                urlCount: this.urlsToMonitor.length
+                urlCount: this.urlsToMonitor.length,
+                environment: {
+                    DB_HOST: process.env.DB_HOST ? 'SET' : 'NOT SET',
+                    DB_NAME: process.env.DB_NAME ? 'SET' : 'NOT SET',
+                    ASICS_USERNAME: process.env.ASICS_USERNAME ? 'SET' : 'NOT SET',
+                    ASICS_PASSWORD: process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET'
+                }
             });
         });
 
@@ -105,6 +141,12 @@ class ASICSWeeklyBatchScraper {
                         <h3>Monitoring ${this.urlsToMonitor.length} URLs</h3>
                         ${this.urlsToMonitor.map(url => `<p>• ${url}</p>`).join('')}
                     </div>
+                    <div class="config">
+                        <h3>Quick Actions</h3>
+                        <button onclick="fetch('/trigger', {method: 'POST'}).then(r=>r.json()).then(d=>alert(JSON.stringify(d)))">
+                            🎯 Trigger Manual Batch
+                        </button>
+                    </div>
                 </body>
                 </html>
             `);
@@ -115,8 +157,15 @@ class ASICSWeeklyBatchScraper {
             try {
                 console.log('🎯 Manual batch trigger received');
                 const batchId = `manual_${Date.now()}`;
-                await this.startWeeklyBatch(batchId);
-                res.json({ success: true, message: 'Batch started', batchId });
+                
+                // Run batch in background
+                setTimeout(() => this.startWeeklyBatch(batchId), 1000);
+                
+                res.json({ 
+                    success: true, 
+                    message: 'Batch started in background', 
+                    batchId
+                });
             } catch (error) {
                 console.error('❌ Manual trigger failed:', error);
                 res.status(500).json({ success: false, error: error.message });
@@ -141,6 +190,13 @@ class ASICSWeeklyBatchScraper {
     async initializeDatabase() {
         try {
             console.log('🗄️ Initializing database...');
+            console.log('🔗 Testing database connection...');
+            
+            // Test connection first
+            const testResult = await this.pool.query('SELECT NOW() as current_time, version() as postgres_version');
+            console.log('✅ Database connection successful!');
+            console.log('   Time:', testResult.rows[0].current_time);
+            console.log('   PostgreSQL:', testResult.rows[0].postgres_version.split(' ')[0]);
             
             // Create scrape_logs table with all necessary columns
             await this.pool.query(`
@@ -157,10 +213,14 @@ class ASICSWeeklyBatchScraper {
             `);
 
             // Add batch_id column if it doesn't exist (for existing installations)
-            await this.pool.query(`
-                ALTER TABLE scrape_logs 
-                ADD COLUMN IF NOT EXISTS batch_id VARCHAR(255)
-            `);
+            try {
+                await this.pool.query(`
+                    ALTER TABLE scrape_logs 
+                    ADD COLUMN IF NOT EXISTS batch_id VARCHAR(255)
+                `);
+            } catch (alterError) {
+                console.log('   batch_id column already exists or could not be added');
+            }
 
             // Create indexes for better performance
             await this.pool.query(`
@@ -197,6 +257,12 @@ class ASICSWeeklyBatchScraper {
             
         } catch (error) {
             console.error('❌ Database initialization failed:', error);
+            console.error('   Error details:', {
+                code: error.code,
+                message: error.message,
+                host: process.env.DB_HOST,
+                database: process.env.DB_NAME
+            });
             process.exit(1);
         }
     }
