@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer'); // Changed from puppeteer-core to puppeteer
+const { chromium } = require('playwright-chromium');
 const { Pool } = require('pg');
 const cron = require('node-cron');
 const path = require('path');
@@ -54,7 +54,7 @@ class ASICSWeeklyBatchScraper {
             timeout: 60000
         };
 
-        // URLs to monitor - start with empty, will be loaded from database or defaults
+        // URLs to monitor
         this.urlsToMonitor = [];
         
         // In-memory storage for results
@@ -75,7 +75,6 @@ class ASICSWeeklyBatchScraper {
     }
 
     setDefaultUrls() {
-        // Set some real ASICS B2B URLs as examples - individual product URLs like you mentioned
         this.urlsToMonitor = [
             'https://b2b.asics.com/us/en-us/mens-running-shoes',
             'https://b2b.asics.com/us/en-us/womens-running-shoes'
@@ -87,9 +86,8 @@ class ASICSWeeklyBatchScraper {
         this.app.use(express.json());
         this.app.use(express.static('public'));
         
-        // Simplified memory monitoring
         this.app.use((req, res, next) => {
-            if (Math.random() < 0.1) { // Only log 10% of requests to reduce spam
+            if (Math.random() < 0.1) {
                 const memUsage = process.memoryUsage();
                 const formatMB = (bytes) => `${Math.round(bytes / 1024 / 1024)}MB`;
                 console.log('💾 Memory usage:', {
@@ -111,6 +109,7 @@ class ASICSWeeklyBatchScraper {
                 config: this.config,
                 urlCount: this.urlsToMonitor.length,
                 databaseEnabled: this.databaseEnabled,
+                browser: 'Playwright Chromium',
                 environment: {
                     DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
                     ASICS_USERNAME: process.env.ASICS_USERNAME ? 'SET' : 'NOT SET',
@@ -119,7 +118,7 @@ class ASICSWeeklyBatchScraper {
             });
         });
 
-        // Dashboard with URL management
+        // Dashboard with URL management (same as before)
         this.app.get('/dashboard', (req, res) => {
             res.send(`
                 <!DOCTYPE html>
@@ -161,12 +160,13 @@ class ASICSWeeklyBatchScraper {
                             <p>Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB</p>
                             <p>Database: ${this.databaseEnabled ? '✅ Connected' : '⚠️ Memory-only mode'}</p>
                             <p>ASICS Credentials: ${this.credentials.username ? '✅ Configured' : '⚠️ Missing'}</p>
+                            <p>Browser: 🎭 Playwright Chromium (Fast!)</p>
                         </div>
                         
                         ${this.databaseEnabled && this.credentials.username ? `
                         <div class="card success">
                             <h3>✅ Ready to Scrape ASICS B2B!</h3>
-                            <p>Database connected and ASICS credentials configured. Ready to scrape individual products.</p>
+                            <p>Database connected and ASICS credentials configured. Using fast Playwright browser.</p>
                         </div>
                         ` : `
                         <div class="card warning">
@@ -187,18 +187,17 @@ class ASICSWeeklyBatchScraper {
                             
                             <div class="examples">
                                 <h4>📝 Example ASICS B2B URLs:</h4>
-                                <p><strong>Category Pages:</strong></p>
-                                <ul>
-                                    <li>https://b2b.asics.com/us/en-us/mens-running-shoes</li>
-                                    <li>https://b2b.asics.com/us/en-us/womens-running-shoes</li>
-                                    <li>https://b2b.asics.com/us/en-us/mens-tennis-shoes</li>
-                                </ul>
                                 <p><strong>Individual Product Pages:</strong></p>
                                 <ul>
                                     <li>https://b2b.asics.com/orders/[ORDER-ID]/products/[SKU]?colorCode=[COLOR]</li>
                                     <li>https://b2b.asics.com/us/en-us/product/[SKU]</li>
                                 </ul>
-                                <p><strong>Note:</strong> Individual product URLs require being logged into ASICS B2B with proper access.</p>
+                                <p><strong>Category Pages:</strong></p>
+                                <ul>
+                                    <li>https://b2b.asics.com/us/en-us/mens-running-shoes</li>
+                                    <li>https://b2b.asics.com/us/en-us/womens-running-shoes</li>
+                                </ul>
+                                <p><strong>Note:</strong> Individual product URLs require being logged into ASICS B2B.</p>
                             </div>
                             
                             <h4>Current URLs (${this.urlsToMonitor.length}):</h4>
@@ -216,16 +215,9 @@ class ASICSWeeklyBatchScraper {
                             
                             ${this.urlsToMonitor.length === 0 ? `
                             <div class="warning" style="padding: 15px; margin: 10px 0;">
-                                <p><strong>No URLs configured!</strong> Add some ASICS B2B URLs above to start monitoring.</p>
+                                <p><strong>No URLs configured!</strong> Add some ASICS B2B URLs above.</p>
                             </div>
                             ` : ''}
-                        </div>
-                        
-                        <div class="card">
-                            <h3>⚙️ Configuration</h3>
-                            <p>Batch Size: ${this.config.batchSize} URLs</p>
-                            <p>Delay: ${this.config.delayBetweenRequests / 1000}s</p>
-                            <p>Max Retries: ${this.config.maxRetries}</p>
                         </div>
                         
                         <div class="card">
@@ -387,7 +379,7 @@ class ASICSWeeklyBatchScraper {
             `);
         });
 
-        // URL Management APIs
+        // URL Management APIs (same as before)
         this.app.get('/urls', (req, res) => {
             res.json({
                 success: true,
@@ -503,7 +495,6 @@ class ASICSWeeklyBatchScraper {
             }
         });
 
-        // Manual trigger
         this.app.post('/trigger', async (req, res) => {
             try {
                 if (this.urlsToMonitor.length === 0) {
@@ -516,7 +507,6 @@ class ASICSWeeklyBatchScraper {
                 console.log('🎯 Manual batch trigger received');
                 const batchId = `manual_${Date.now()}`;
                 
-                // Run batch in background
                 setTimeout(() => this.startWeeklyBatch(batchId), 1000);
                 
                 res.json({ 
@@ -524,7 +514,7 @@ class ASICSWeeklyBatchScraper {
                     message: 'Batch started in background', 
                     batchId,
                     urlCount: this.urlsToMonitor.length,
-                    databaseEnabled: this.databaseEnabled
+                    browser: 'Playwright'
                 });
             } catch (error) {
                 console.error('❌ Manual trigger failed:', error);
@@ -532,7 +522,6 @@ class ASICSWeeklyBatchScraper {
             }
         });
 
-        // Get recent logs
         this.app.get('/logs', (req, res) => {
             try {
                 if (this.databaseEnabled && this.pool) {
@@ -611,63 +600,29 @@ class ASICSWeeklyBatchScraper {
 
         try {
             console.log('🗄️ Initializing database...');
-            console.log('🔗 Testing database connection...');
-            
             const testResult = await this.pool.query('SELECT NOW() as current_time');
             console.log('✅ Database connection successful!');
-            console.log('   Time:', testResult.rows[0].current_time);
             
-            // Create monitored_urls table
-            try {
-                await this.pool.query(`
-                    CREATE TABLE IF NOT EXISTS monitored_urls (
-                        id SERIAL PRIMARY KEY,
-                        url VARCHAR(1000) NOT NULL UNIQUE,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                `);
-                console.log('✅ Monitored URLs table ready');
-            } catch (tableError) {
-                console.log('⚠️ Could not create monitored_urls table:', tableError.message);
-            }
+            // Create tables
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS monitored_urls (
+                    id SERIAL PRIMARY KEY,
+                    url VARCHAR(1000) NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
             
-            // Create scrape_logs table
-            try {
-                await this.pool.query(`
-                    CREATE TABLE IF NOT EXISTS scrape_logs (
-                        id SERIAL PRIMARY KEY,
-                        url VARCHAR(1000) NOT NULL,
-                        status VARCHAR(50) DEFAULT 'pending',
-                        product_count INTEGER DEFAULT 0,
-                        error_message TEXT,
-                        batch_id VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                `);
-                console.log('✅ Scrape logs table ready');
-            } catch (tableError) {
-                console.log('⚠️ Could not create scrape_logs table:', tableError.message);
-            }
-
-            // Create products table
-            try {
-                await this.pool.query(`
-                    CREATE TABLE IF NOT EXISTS products (
-                        id SERIAL PRIMARY KEY,
-                        batch_id VARCHAR(255),
-                        url VARCHAR(1000),
-                        sku VARCHAR(255),
-                        name VARCHAR(500),
-                        price VARCHAR(100),
-                        description TEXT,
-                        image_url VARCHAR(1000),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                `);
-                console.log('✅ Products table ready');
-            } catch (tableError) {
-                console.log('⚠️ Could not create products table:', tableError.message);
-            }
+            await this.pool.query(`
+                CREATE TABLE IF NOT EXISTS scrape_logs (
+                    id SERIAL PRIMARY KEY,
+                    url VARCHAR(1000) NOT NULL,
+                    status VARCHAR(50) DEFAULT 'pending',
+                    product_count INTEGER DEFAULT 0,
+                    error_message TEXT,
+                    batch_id VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
 
             console.log('✅ Database initialization completed');
             
@@ -779,52 +734,43 @@ class ASICSWeeklyBatchScraper {
         return results;
     }
 
-    // WORKING authentication function with regular Puppeteer
+    // PLAYWRIGHT authentication - much faster startup
     async getAuthenticatedBrowser() {
-        console.log('🔧 Using FIXED authentication method...');
-        const browser = await puppeteer.launch({
+        console.log('🎭 Using Playwright for ASICS B2B authentication...');
+        
+        const browser = await chromium.launch({
             headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-extensions',
-                '--disable-plugins'
+                '--disable-web-security'
             ]
         });
 
         try {
-            const page = await browser.newPage();
-            await page.setViewport({ width: 1280, height: 720 });
+            const page = await browser.newPage({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            });
             
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-            
-            console.log('🚀 [FIXED] Launching browser with ASICS B2B authentication...');
-            console.log('🔐 [FIXED] Navigating to ASICS B2B authentication...');
-            
+            console.log('🚀 [PLAYWRIGHT] Navigating to ASICS B2B login...');
             await page.goto('https://b2b.asics.com/authentication/login', { 
-                waitUntil: 'networkidle0',
+                waitUntil: 'networkidle',
                 timeout: 30000 
             });
 
             const currentUrl = page.url();
             const title = await page.title();
-            console.log(`📋 [FIXED] Current URL: ${currentUrl}`);
-            console.log(`📋 [FIXED] Page title: ${title}`);
+            console.log(`📋 [PLAYWRIGHT] Current URL: ${currentUrl}`);
+            console.log(`📋 [PLAYWRIGHT] Page title: ${title}`);
 
+            // Check page content
             const pageState = await page.evaluate(() => {
                 const bodyText = document.body ? document.body.innerText.slice(0, 500) : '';
                 const hasCountrySelection = bodyText.includes('Please Select The Region') || 
                                           bodyText.includes('Americas') || 
                                           bodyText.includes('United States');
-                const hasLoginForm = document.querySelector('input[type="password"]') !== null ||
-                                   document.querySelector('input[name*="password"]') !== null;
+                const hasLoginForm = document.querySelector('input[type="password"]') !== null;
                 
                 return {
                     title: document.title,
@@ -835,197 +781,48 @@ class ASICSWeeklyBatchScraper {
                 };
             });
 
-            console.log('📊 [FIXED] Page content check:', pageState);
+            console.log('📊 [PLAYWRIGHT] Page content check:', pageState);
 
+            // Handle country selection
             if (pageState.hasCountrySelection && !pageState.hasLoginForm) {
-                console.log('🌍 [FIXED] Country selection detected, clicking United States...');
-                
-                const countrySelectors = [
-                    'a[href*="united-states"]',
-                    'button:contains("United States")',
-                    'div:contains("United States")',
-                    'span:contains("United States")',
-                    '.country-item:contains("United States")'
-                ];
-
-                let countrySelected = false;
-                for (const selector of countrySelectors) {
-                    try {
-                        await page.waitForSelector(selector, { timeout: 5000 });
-                        await page.click(selector);
-                        countrySelected = true;
-                        break;
-                    } catch (e) {
-                        continue;
-                    }
-                }
-
-                if (!countrySelected) {
-                    await page.evaluate(() => {
-                        const elements = Array.from(document.querySelectorAll('*'));
-                        const usElement = elements.find(el => 
-                            el.textContent && el.textContent.includes('United States')
-                        );
-                        if (usElement) {
-                            usElement.click();
-                        }
-                    });
-                }
-
-                console.log('⏳ [FIXED] Waiting for login form after country selection...');
-                await page.waitForTimeout(3000);
+                console.log('🌍 [PLAYWRIGHT] Country selection detected, clicking United States...');
                 
                 try {
-                    await page.waitForSelector('input[type="password"], input[name*="password"]', { timeout: 10000 });
-                    console.log('✅ [FIXED] Login form appeared');
+                    await page.click('text=United States');
+                    console.log('⏳ [PLAYWRIGHT] Waiting for login form...');
+                    await page.waitForSelector('input[type="password"]', { timeout: 10000 });
+                    console.log('✅ [PLAYWRIGHT] Login form appeared');
                 } catch (e) {
                     throw new Error('Login form did not appear after country selection');
                 }
             }
 
-            const loginFormCheck = await page.evaluate(() => {
-                const usernameSelectors = [
-                    'input[type="email"]',
-                    'input[name*="email" i]',
-                    'input[name*="username" i]',
-                    'input[name*="user" i]',
-                    'input[id*="email" i]',
-                    'input[id*="username" i]',
-                    'input[id*="user" i]',
-                    'input[placeholder*="email" i]',
-                    'input[placeholder*="username" i]',
-                    'input[placeholder*="user" i]'
-                ];
-                
-                const passwordSelectors = [
-                    'input[type="password"]',
-                    'input[name*="password" i]',
-                    'input[id*="password" i]'
-                ];
+            // Find login fields
+            const usernameField = await page.locator('input[type="email"], input[name*="username"], input[name*="user"]').first();
+            const passwordField = await page.locator('input[type="password"]').first();
 
-                let usernameField = null;
-                let passwordField = null;
-
-                for (const selector of usernameSelectors) {
-                    usernameField = document.querySelector(selector);
-                    if (usernameField) break;
-                }
-
-                for (const selector of passwordSelectors) {
-                    passwordField = document.querySelector(selector);
-                    if (passwordField) break;
-                }
-
-                if (!usernameField && passwordField) {
-                    const allInputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
-                    const passwordIndex = Array.from(document.querySelectorAll('input')).indexOf(passwordField);
-                    usernameField = allInputs.find(input => {
-                        const inputIndex = Array.from(document.querySelectorAll('input')).indexOf(input);
-                        return inputIndex < passwordIndex;
-                    });
-                }
-
-                function getSelector(element) {
-                    if (element.id) return `#${element.id}`;
-                    if (element.name) return `input[name="${element.name}"]`;
-                    if (element.className) return `input.${element.className.split(' ')[0]}`;
-                    return element.tagName.toLowerCase();
-                }
-
-                return {
-                    hasEmailField: !!usernameField,
-                    hasPasswordField: !!passwordField,
-                    hasBoth: !!(usernameField && passwordField),
-                    usernameSelector: usernameField ? getSelector(usernameField) : null,
-                    passwordSelector: passwordField ? getSelector(passwordField) : null
-                };
-            });
-
-            console.log('📝 [FIXED] Login form check:', loginFormCheck);
-
-            const debugState = await page.evaluate(() => ({
-                url: window.location.href,
-                title: document.title,
-                bodyText: document.body ? document.body.innerText.slice(0, 500) : ''
-            }));
-            console.log('🔍 [FIXED] Current page state:', debugState);
-
-            if (!loginFormCheck.hasBoth) {
-                try {
-                    await page.screenshot({
-                        path: '/tmp/login_debug.png',
-                        fullPage: true
-                    });
-                    console.log('📸 [FIXED] Screenshot taken');
-                } catch (screenshotError) {
-                    console.log('⚠️ Could not take screenshot:', screenshotError.message);
-                }
-                
-                const debugInfo = {
-                    url: debugState.url,
-                    title: debugState.title,
-                    bodySnippet: debugState.bodyText.slice(0, 200),
-                    loginFormCheck
-                };
-                console.log('🔍 [FIXED] Debug info:', debugInfo);
-                
-                throw new Error(`Login form incomplete. Email: ${loginFormCheck.hasEmailField}, Password: ${loginFormCheck.hasPasswordField}`);
+            if (!(await usernameField.count()) || !(await passwordField.count())) {
+                throw new Error('Login form fields not found');
             }
 
+            console.log('📝 [PLAYWRIGHT] Filling in credentials...');
+            await usernameField.fill(this.credentials.username);
+            await passwordField.fill(this.credentials.password);
+
+            console.log('🔐 [PLAYWRIGHT] Submitting login form...');
+            
+            // Try multiple submit methods
             try {
-                const cookieAcceptButton = await page.$('button:contains("Accept"), button[id*="accept"], button[class*="accept"]');
-                if (cookieAcceptButton) {
-                    await cookieAcceptButton.click();
-                    console.log('🍪 [FIXED] Cookie consent accepted');
-                    await page.waitForTimeout(1000);
-                }
+                await page.click('button[type="submit"], input[type="submit"], button:has-text("Log In")');
             } catch (e) {
-                // Cookie consent not found
+                await passwordField.press('Enter');
             }
 
-            console.log('📝 [FIXED] Filling in credentials...');
-            
-            if (loginFormCheck.usernameSelector) {
-                await page.type(loginFormCheck.usernameSelector, this.credentials.username);
-            }
-            
-            if (loginFormCheck.passwordSelector) {
-                await page.type(loginFormCheck.passwordSelector, this.credentials.password);
-            }
-
-            console.log('🔐 [FIXED] Submitting login form...');
-            
-            const submitSelectors = [
-                'button[type="submit"]',
-                'input[type="submit"]',
-                'button:contains("Log In")',
-                'button:contains("Login")',
-                'button:contains("Sign In")',
-                '.login-button',
-                '#login-button'
-            ];
-
-            let submitted = false;
-            for (const selector of submitSelectors) {
-                try {
-                    await page.click(selector);
-                    submitted = true;
-                    break;
-                } catch (e) {
-                    continue;
-                }
-            }
-
-            if (!submitted) {
-                await page.focus(loginFormCheck.passwordSelector);
-                await page.keyboard.press('Enter');
-            }
-
-            console.log('⏳ [FIXED] Waiting for authentication...');
-            await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
+            console.log('⏳ [PLAYWRIGHT] Waiting for authentication...');
+            await page.waitForLoadState('networkidle', { timeout: 30000 });
 
             const finalUrl = page.url();
-            console.log(`✅ [FIXED] Authentication complete. Final URL: ${finalUrl}`);
+            console.log(`✅ [PLAYWRIGHT] Authentication complete. Final URL: ${finalUrl}`);
 
             if (finalUrl.includes('login') || finalUrl.includes('authentication')) {
                 throw new Error('Authentication failed - still on login page');
@@ -1034,7 +831,7 @@ class ASICSWeeklyBatchScraper {
             return { browser, page };
 
         } catch (error) {
-            console.error('❌ [FIXED] Authentication failed:', error.message);
+            console.error('❌ [PLAYWRIGHT] Authentication failed:', error.message);
             await browser.close();
             throw error;
         }
@@ -1045,11 +842,11 @@ class ASICSWeeklyBatchScraper {
         
         try {
             console.log(`🔍 Navigating to: ${url}`);
-            await page.goto(url, { waitUntil: 'networkidle0', timeout: this.config.timeout });
+            await page.goto(url, { waitUntil: 'networkidle', timeout: this.config.timeout });
             
             await page.waitForTimeout(3000);
             
-            // Enhanced product scraping for ASICS B2B
+            // Enhanced product scraping
             const products = await page.evaluate(() => {
                 const productElements = document.querySelectorAll([
                     '.product-item',
@@ -1058,8 +855,7 @@ class ASICSWeeklyBatchScraper {
                     '.product',
                     '[data-product-id]',
                     '.grid-item',
-                    '.product-details',
-                    '.item-detail'
+                    '.product-details'
                 ].join(', '));
                 
                 const products = [];
@@ -1070,55 +866,27 @@ class ASICSWeeklyBatchScraper {
                             '.product-name',
                             '.product-title', 
                             '.name',
-                            'h1',
-                            'h2',
-                            'h3',
-                            '.title',
-                            '[data-product-name]'
+                            'h1', 'h2', 'h3',
+                            '.title'
                         ].join(', '))?.textContent?.trim();
                         
                         const price = element.querySelector([
                             '.price',
                             '.product-price',
-                            '.cost',
                             '[class*="price"]',
-                            '.msrp',
-                            '.wholesale'
+                            '.msrp'
                         ].join(', '))?.textContent?.trim();
                         
                         const sku = element.querySelector([
                             '.sku',
                             '.product-id',
                             '[data-sku]',
-                            '[data-product-id]',
-                            '.style-number',
-                            '.model-number'
+                            '.style-number'
                         ].join(', '))?.textContent?.trim() || 
-                        element.getAttribute('data-sku') || 
-                        element.getAttribute('data-product-id');
+                        element.getAttribute('data-sku');
                         
                         const imageUrl = element.querySelector('img')?.src;
                         const link = element.querySelector('a')?.href;
-                        
-                        // Try to get additional ASICS-specific details
-                        const color = element.querySelector([
-                            '.color',
-                            '.color-name',
-                            '[data-color]'
-                        ].join(', '))?.textContent?.trim();
-                        
-                        const size = element.querySelector([
-                            '.size',
-                            '.size-option',
-                            '[data-size]'
-                        ].join(', '))?.textContent?.trim();
-                        
-                        const availability = element.querySelector([
-                            '.availability',
-                            '.stock',
-                            '.in-stock',
-                            '.qty'
-                        ].join(', '))?.textContent?.trim();
                         
                         if (name || sku || price) {
                             products.push({
@@ -1127,9 +895,6 @@ class ASICSWeeklyBatchScraper {
                                 sku: sku || `auto-${index}`,
                                 imageUrl: imageUrl || '',
                                 link: link || '',
-                                color: color || '',
-                                size: size || '',
-                                availability: availability || '',
                                 description: ''
                             });
                         }
@@ -1138,23 +903,19 @@ class ASICSWeeklyBatchScraper {
                     }
                 });
                 
-                // If no products found with standard selectors, try to get page-level product info
+                // Fallback for product pages
                 if (products.length === 0) {
                     const pageTitle = document.title;
                     const bodyText = document.body ? document.body.innerText : '';
                     
-                    // Check if this looks like a product page
-                    if (pageTitle && (bodyText.includes('SKU') || bodyText.includes('Price') || url.includes('product'))) {
+                    if (pageTitle && (bodyText.includes('SKU') || bodyText.includes('Price') || window.location.href.includes('product'))) {
                         products.push({
                             name: pageTitle,
                             price: 'See page for pricing',
-                            sku: 'extracted-from-page',
+                            sku: 'page-detected',
                             imageUrl: '',
-                            link: url,
-                            color: '',
-                            size: '',
-                            availability: '',
-                            description: 'Product page detected but specific details not extracted'
+                            link: window.location.href,
+                            description: 'Product page detected'
                         });
                     }
                 }
@@ -1229,7 +990,7 @@ class ASICSWeeklyBatchScraper {
                 console.log(`✅ Also logged ${results.length} results to database`);
                 
             } catch (error) {
-                console.error('⚠️ Database logging failed, but memory logging succeeded:', error.message);
+                console.error('⚠️ Database logging failed:', error.message);
             }
         }
     }
@@ -1270,12 +1031,12 @@ class ASICSWeeklyBatchScraper {
     async start() {
         try {
             console.log('🚀 Initializing ASICS Weekly Batch Scraper...');
+            console.log('🎭 Using Playwright for fast browser automation');
             
             const memUsage = process.memoryUsage();
             const formatMB = (bytes) => `${Math.round(bytes / 1024 / 1024)}MB`;
             console.log('💾 Memory available:', {
                 heapUsed: formatMB(memUsage.heapUsed),
-                heapTotal: formatMB(memUsage.heapTotal),
                 rss: formatMB(memUsage.rss)
             });
 
@@ -1287,8 +1048,7 @@ class ASICSWeeklyBatchScraper {
             this.setupScheduler();
             
             console.log(`✅ Weekly batch scraper initialized with ${this.urlsToMonitor.length} URLs`);
-            console.log(`⚙️ Config: ${this.config.batchSize} URLs per batch, ${this.config.delayBetweenRequests / 1000}s delay`);
-            console.log(`🗄️ Database mode: ${this.databaseEnabled ? 'Enabled' : 'Memory-only'}`);
+            console.log(`🎭 Browser: Playwright Chromium (Fast startup!)`);
 
         } catch (error) {
             console.error('❌ Failed to start scraper:', error);
