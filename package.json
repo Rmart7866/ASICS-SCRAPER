@@ -1,7 +1,7 @@
 {
   "name": "asics-scraper",
   "version": "1.0.0",
-  "description": "ASICS B2B Weekly Batch Scraper",
+  "description": "ASICS B2B Weekly Batch Scraper with Browserless",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "express": "4.18.2",
-    "playwright-chromium": "1.40.0",
+    "puppeteer-core": "21.6.1",
     "pg": "8.11.3",
     "node-cron": "3.0.3"
   },
