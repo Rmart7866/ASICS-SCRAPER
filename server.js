@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer'); // Changed from puppeteer-core to puppeteer
 const { Pool } = require('pg');
 const cron = require('node-cron');
 const path = require('path');
@@ -779,12 +779,11 @@ class ASICSWeeklyBatchScraper {
         return results;
     }
 
-    // WORKING authentication function from your old code
+    // WORKING authentication function with regular Puppeteer
     async getAuthenticatedBrowser() {
         console.log('🔧 Using FIXED authentication method...');
         const browser = await puppeteer.launch({
             headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
