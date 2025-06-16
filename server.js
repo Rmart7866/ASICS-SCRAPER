@@ -967,9 +967,9 @@ class ASICSWeeklyBatchScraper {
                 }
             }
 
-            // Find and fill login fields with more flexible selectors
-            const usernameSelector = 'input[type="email"], input[type="text"], input[name*="username"], input[name*="user"], input[name*="email"], input[id*="username"], input[id*="email"], input[placeholder*="email"], input[placeholder*="username"]';
-            const passwordSelector = 'input[type="password"]';
+            // Find and fill login fields using the discovered selectors
+            const usernameSelector = '#username';
+            const passwordSelector = '#password';
 
             console.log(`🔍 [${serviceType}] Looking for username field...`);
             await page.waitForSelector(usernameSelector, { timeout: 15000 });
@@ -982,16 +982,27 @@ class ASICSWeeklyBatchScraper {
 
             console.log(`🔐 [${serviceType}] Submitting login form...`);
             
-            // Submit form
+            // More robust form submission
             try {
-                await Promise.all([
-                    page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
-                    page.click('button[type="submit"], input[type="submit"]')
-                ]);
-            } catch (e) {
-                // Fallback method
-                await page.keyboard.press('Enter');
-                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
+                // Try to find and click submit button first
+                const submitButton = await page.$('button[type="submit"], input[type="submit"], button:contains("Sign In"), button:contains("Login")');
+                if (submitButton) {
+                    console.log(`🔘 [${serviceType}] Found submit button, clicking...`);
+                    await Promise.race([
+                        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
+                        submitButton.click()
+                    ]);
+                } else {
+                    console.log(`⌨️ [${serviceType}] No submit button found, trying Enter key...`);
+                    await Promise.race([
+                        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
+                        page.keyboard.press('Enter')
+                    ]);
+                }
+            } catch (navError) {
+                console.log(`⏳ [${serviceType}] Navigation might have succeeded despite error:`, navError.message);
+                // Give it a moment to settle
+                await page.waitForTimeout(3000);
             }
 
             const finalUrl = page.url();
