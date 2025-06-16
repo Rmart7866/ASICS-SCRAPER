@@ -1,5 +1,5 @@
 const express = require('express');
-const { chromium } = require('playwright-chromium');
+const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
 const cron = require('node-cron');
 const path = require('path');
@@ -16,6 +16,7 @@ class ASICSWeeklyBatchScraper {
         console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
         console.log('   ASICS_USERNAME:', process.env.ASICS_USERNAME ? 'SET' : 'NOT SET');
         console.log('   ASICS_PASSWORD:', process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET');
+        console.log('   BROWSERLESS_TOKEN:', process.env.BROWSERLESS_TOKEN ? 'SET' : 'NOT SET');
         
         // Database configuration
         if (process.env.DATABASE_URL) {
@@ -40,10 +41,21 @@ class ASICSWeeklyBatchScraper {
             password: process.env.ASICS_PASSWORD
         };
 
+        // Browserless configuration
+        this.browserlessToken = process.env.BROWSERLESS_TOKEN;
+        this.browserlessEndpoint = process.env.BROWSERLESS_ENDPOINT || 'wss://chrome.browserless.io';
+
         if (!this.credentials.username || !this.credentials.password) {
             console.warn('⚠️ ASICS credentials not set - authentication will fail');
         } else {
             console.log('✅ ASICS credentials configured');
+        }
+
+        if (!this.browserlessToken) {
+            console.warn('⚠️ BROWSERLESS_TOKEN not set - browser automation will fail');
+            console.warn('   Sign up at browserless.io and add BROWSERLESS_TOKEN to environment');
+        } else {
+            console.log('✅ Browserless token configured');
         }
 
         // Scraping configuration
@@ -103,28 +115,30 @@ class ASICSWeeklyBatchScraper {
         // Health check
         this.app.get('/', (req, res) => {
             res.json({
-                status: 'ASICS Weekly Batch Scraper Active',
+                status: 'ASICS Weekly Batch Scraper Active (Browserless)',
                 uptime: process.uptime(),
                 memory: process.memoryUsage(),
                 config: this.config,
                 urlCount: this.urlsToMonitor.length,
                 databaseEnabled: this.databaseEnabled,
-                browser: 'Playwright Chromium',
+                browser: 'Browserless Cloud',
+                browserlessConfigured: !!this.browserlessToken,
                 environment: {
                     DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
                     ASICS_USERNAME: process.env.ASICS_USERNAME ? 'SET' : 'NOT SET',
-                    ASICS_PASSWORD: process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET'
+                    ASICS_PASSWORD: process.env.ASICS_PASSWORD ? 'SET' : 'NOT SET',
+                    BROWSERLESS_TOKEN: process.env.BROWSERLESS_TOKEN ? 'SET' : 'NOT SET'
                 }
             });
         });
 
-        // Dashboard with URL management (same as before)
+        // Dashboard with URL management
         this.app.get('/dashboard', (req, res) => {
             res.send(`
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <title>ASICS Scraper Dashboard</title>
+                    <title>ASICS Scraper Dashboard (Browserless)</title>
                     <style>
                         body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
                         .container { max-width: 1200px; margin: 0 auto; }
@@ -148,11 +162,12 @@ class ASICSWeeklyBatchScraper {
                         .examples { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 15px 0; }
                         .examples ul { margin: 10px 0; }
                         .examples li { margin: 5px 0; font-family: monospace; font-size: 12px; }
+                        .browserless-info { background: #e8f5e8; border: 1px solid #4caf50; }
                     </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>🚀 ASICS B2B Scraper Dashboard</h1>
+                        <h1>🚀 ASICS B2B Scraper Dashboard (Browserless)</h1>
                         
                         <div class="card status">
                             <h2>Status: Active ✅</h2>
@@ -160,18 +175,38 @@ class ASICSWeeklyBatchScraper {
                             <p>Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB</p>
                             <p>Database: ${this.databaseEnabled ? '✅ Connected' : '⚠️ Memory-only mode'}</p>
                             <p>ASICS Credentials: ${this.credentials.username ? '✅ Configured' : '⚠️ Missing'}</p>
-                            <p>Browser: 🎭 Playwright Chromium (Fast!)</p>
+                            <p>Browser: 🎭 Browserless Cloud ${this.browserlessToken ? '✅' : '⚠️ Token Missing'}</p>
                         </div>
                         
-                        ${this.databaseEnabled && this.credentials.username ? `
+                        ${this.browserlessToken ? `
+                        <div class="card browserless-info">
+                            <h3>🎭 Browserless Cloud Active!</h3>
+                            <p><strong>✅ No local browser needed</strong> - using managed cloud browsers</p>
+                            <p><strong>✅ Anti-bot protection</strong> - better success rates on protected sites</p>
+                            <p><strong>✅ Fast & reliable</strong> - no deployment browser issues</p>
+                            <p><strong>✅ Automatic scaling</strong> - handles traffic spikes</p>
+                        </div>
+                        ` : `
+                        <div class="card warning">
+                            <h3>⚠️ Browserless Configuration Needed</h3>
+                            <p><strong>Add BROWSERLESS_TOKEN to environment variables:</strong></p>
+                            <ol>
+                                <li>Sign up at <a href="https://browserless.io" target="_blank">browserless.io</a></li>
+                                <li>Get your API token</li>
+                                <li>Add BROWSERLESS_TOKEN=your_token to Render environment</li>
+                            </ol>
+                        </div>
+                        `}
+                        
+                        ${this.databaseEnabled && this.credentials.username && this.browserlessToken ? `
                         <div class="card success">
                             <h3>✅ Ready to Scrape ASICS B2B!</h3>
-                            <p>Database connected and ASICS credentials configured. Using fast Playwright browser.</p>
+                            <p>Database connected, ASICS credentials configured, and Browserless ready.</p>
                         </div>
                         ` : `
                         <div class="card warning">
                             <h3>⚠️ Configuration Needed</h3>
-                            <p>Make sure ASICS_USERNAME and ASICS_PASSWORD environment variables are set.</p>
+                            <p>Make sure ASICS_USERNAME, ASICS_PASSWORD, and BROWSERLESS_TOKEN environment variables are set.</p>
                         </div>
                         `}
                         
@@ -223,7 +258,7 @@ class ASICSWeeklyBatchScraper {
                         <div class="card">
                             <h3>🎯 Quick Actions</h3>
                             <button onclick="triggerBatch()" class="btn btn-primary">
-                                🎯 Trigger Manual Batch
+                                🎭 Trigger Browserless Batch
                             </button>
                             <button onclick="viewLogs()" class="btn btn-success">
                                 📋 View Recent Logs
@@ -327,7 +362,7 @@ class ASICSWeeklyBatchScraper {
                             const result = document.getElementById('result');
                             
                             button.disabled = true;
-                            button.textContent = '⏳ Starting batch...';
+                            button.textContent = '⏳ Starting Browserless batch...';
                             result.innerHTML = '';
                             
                             try {
@@ -335,7 +370,7 @@ class ASICSWeeklyBatchScraper {
                                 const data = await response.json();
                                 
                                 if (data.success) {
-                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Batch started successfully! Check logs for progress.</div>';
+                                    result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px; margin: 10px 0;">✅ Browserless batch started! Check logs for progress.</div>';
                                 } else {
                                     result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px; margin: 10px 0;">❌ ' + data.error + '</div>';
                                 }
@@ -344,7 +379,7 @@ class ASICSWeeklyBatchScraper {
                             }
                             
                             button.disabled = false;
-                            button.textContent = '🎯 Trigger Manual Batch';
+                            button.textContent = '🎭 Trigger Browserless Batch';
                         }
                         
                         async function viewLogs() {
@@ -379,7 +414,7 @@ class ASICSWeeklyBatchScraper {
             `);
         });
 
-        // URL Management APIs (same as before)
+        // URL Management APIs (keep the same as before)
         this.app.get('/urls', (req, res) => {
             res.json({
                 success: true,
@@ -503,18 +538,25 @@ class ASICSWeeklyBatchScraper {
                         error: 'No URLs configured. Add some URLs first!'
                     });
                 }
+
+                if (!this.browserlessToken) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'BROWSERLESS_TOKEN not configured. Add it to environment variables!'
+                    });
+                }
                 
-                console.log('🎯 Manual batch trigger received');
+                console.log('🎯 Manual Browserless batch trigger received');
                 const batchId = `manual_${Date.now()}`;
                 
                 setTimeout(() => this.startWeeklyBatch(batchId), 1000);
                 
                 res.json({ 
                     success: true, 
-                    message: 'Batch started in background', 
+                    message: 'Browserless batch started in background', 
                     batchId,
                     urlCount: this.urlsToMonitor.length,
-                    browser: 'Playwright'
+                    browser: 'Browserless Cloud'
                 });
             } catch (error) {
                 console.error('❌ Manual trigger failed:', error);
@@ -635,7 +677,7 @@ class ASICSWeeklyBatchScraper {
 
     setupScheduler() {
         cron.schedule('0 2 * * 0', async () => {
-            console.log('📅 Weekly scheduled batch starting...');
+            console.log('📅 Weekly scheduled Browserless batch starting...');
             const batchId = `scheduled_${Date.now()}`;
             await this.startWeeklyBatch(batchId);
         }, {
@@ -651,6 +693,11 @@ class ASICSWeeklyBatchScraper {
         
         if (this.urlsToMonitor.length === 0) {
             console.log('⚠️ No URLs configured - skipping batch');
+            return;
+        }
+
+        if (!this.browserlessToken) {
+            console.log('⚠️ BROWSERLESS_TOKEN not configured - skipping batch');
             return;
         }
         
@@ -734,35 +781,38 @@ class ASICSWeeklyBatchScraper {
         return results;
     }
 
-    // PLAYWRIGHT authentication - much faster startup
+    // BROWSERLESS authentication - cloud managed browsers!
     async getAuthenticatedBrowser() {
-        console.log('🎭 Using Playwright for ASICS B2B authentication...');
+        console.log('🎭 Using Browserless for ASICS B2B authentication...');
         
-        const browser = await chromium.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-web-security'
-            ]
+        if (!this.browserlessToken) {
+            throw new Error('BROWSERLESS_TOKEN not configured');
+        }
+
+        // Connect to Browserless instead of launching locally
+        const browserWSEndpoint = `${this.browserlessEndpoint}?token=${this.browserlessToken}`;
+        
+        const browser = await puppeteer.connect({
+            browserWSEndpoint
         });
 
         try {
-            const page = await browser.newPage({
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            });
+            const page = await browser.newPage();
             
-            console.log('🚀 [PLAYWRIGHT] Navigating to ASICS B2B login...');
+            // Set realistic user agent and viewport
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            await page.setViewport({ width: 1366, height: 768 });
+            
+            console.log('🚀 [BROWSERLESS] Navigating to ASICS B2B login...');
             await page.goto('https://b2b.asics.com/authentication/login', { 
-                waitUntil: 'networkidle',
+                waitUntil: 'networkidle0',
                 timeout: 30000 
             });
 
             const currentUrl = page.url();
             const title = await page.title();
-            console.log(`📋 [PLAYWRIGHT] Current URL: ${currentUrl}`);
-            console.log(`📋 [PLAYWRIGHT] Page title: ${title}`);
+            console.log(`📋 [BROWSERLESS] Current URL: ${currentUrl}`);
+            console.log(`📋 [BROWSERLESS] Page title: ${title}`);
 
             // Check page content
             const pageState = await page.evaluate(() => {
@@ -781,48 +831,49 @@ class ASICSWeeklyBatchScraper {
                 };
             });
 
-            console.log('📊 [PLAYWRIGHT] Page content check:', pageState);
+            console.log('📊 [BROWSERLESS] Page content check:', pageState);
 
             // Handle country selection
             if (pageState.hasCountrySelection && !pageState.hasLoginForm) {
-                console.log('🌍 [PLAYWRIGHT] Country selection detected, clicking United States...');
+                console.log('🌍 [BROWSERLESS] Country selection detected, clicking United States...');
                 
                 try {
                     await page.click('text=United States');
-                    console.log('⏳ [PLAYWRIGHT] Waiting for login form...');
+                    console.log('⏳ [BROWSERLESS] Waiting for login form...');
                     await page.waitForSelector('input[type="password"]', { timeout: 10000 });
-                    console.log('✅ [PLAYWRIGHT] Login form appeared');
+                    console.log('✅ [BROWSERLESS] Login form appeared');
                 } catch (e) {
                     throw new Error('Login form did not appear after country selection');
                 }
             }
 
-            // Find login fields
-            const usernameField = await page.locator('input[type="email"], input[name*="username"], input[name*="user"]').first();
-            const passwordField = await page.locator('input[type="password"]').first();
+            // Find and fill login fields
+            const usernameSelector = 'input[type="email"], input[name*="username"], input[name*="user"]';
+            const passwordSelector = 'input[type="password"]';
 
-            if (!(await usernameField.count()) || !(await passwordField.count())) {
-                throw new Error('Login form fields not found');
-            }
+            await page.waitForSelector(usernameSelector, { timeout: 10000 });
+            await page.waitForSelector(passwordSelector, { timeout: 10000 });
 
-            console.log('📝 [PLAYWRIGHT] Filling in credentials...');
-            await usernameField.fill(this.credentials.username);
-            await passwordField.fill(this.credentials.password);
+            console.log('📝 [BROWSERLESS] Filling in credentials...');
+            await page.type(usernameSelector, this.credentials.username);
+            await page.type(passwordSelector, this.credentials.password);
 
-            console.log('🔐 [PLAYWRIGHT] Submitting login form...');
+            console.log('🔐 [BROWSERLESS] Submitting login form...');
             
-            // Try multiple submit methods
+            // Submit form
             try {
-                await page.click('button[type="submit"], input[type="submit"], button:has-text("Log In")');
+                await Promise.all([
+                    page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
+                    page.click('button[type="submit"], input[type="submit"]')
+                ]);
             } catch (e) {
-                await passwordField.press('Enter');
+                // Fallback method
+                await page.keyboard.press('Enter');
+                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
             }
-
-            console.log('⏳ [PLAYWRIGHT] Waiting for authentication...');
-            await page.waitForLoadState('networkidle', { timeout: 30000 });
 
             const finalUrl = page.url();
-            console.log(`✅ [PLAYWRIGHT] Authentication complete. Final URL: ${finalUrl}`);
+            console.log(`✅ [BROWSERLESS] Authentication complete. Final URL: ${finalUrl}`);
 
             if (finalUrl.includes('login') || finalUrl.includes('authentication')) {
                 throw new Error('Authentication failed - still on login page');
@@ -831,7 +882,7 @@ class ASICSWeeklyBatchScraper {
             return { browser, page };
 
         } catch (error) {
-            console.error('❌ [PLAYWRIGHT] Authentication failed:', error.message);
+            console.error('❌ [BROWSERLESS] Authentication failed:', error.message);
             await browser.close();
             throw error;
         }
@@ -842,7 +893,7 @@ class ASICSWeeklyBatchScraper {
         
         try {
             console.log(`🔍 Navigating to: ${url}`);
-            await page.goto(url, { waitUntil: 'networkidle', timeout: this.config.timeout });
+            await page.goto(url, { waitUntil: 'networkidle0', timeout: this.config.timeout });
             
             await page.waitForTimeout(3000);
             
@@ -1030,8 +1081,8 @@ class ASICSWeeklyBatchScraper {
 
     async start() {
         try {
-            console.log('🚀 Initializing ASICS Weekly Batch Scraper...');
-            console.log('🎭 Using Playwright for fast browser automation');
+            console.log('🚀 Initializing ASICS Weekly Batch Scraper with Browserless...');
+            console.log('🎭 Using Browserless cloud browsers - no local Chrome needed!');
             
             const memUsage = process.memoryUsage();
             const formatMB = (bytes) => `${Math.round(bytes / 1024 / 1024)}MB`;
@@ -1048,7 +1099,7 @@ class ASICSWeeklyBatchScraper {
             this.setupScheduler();
             
             console.log(`✅ Weekly batch scraper initialized with ${this.urlsToMonitor.length} URLs`);
-            console.log(`🎭 Browser: Playwright Chromium (Fast startup!)`);
+            console.log(`🎭 Browser: Browserless Cloud (No deployment issues!)`);
 
         } catch (error) {
             console.error('❌ Failed to start scraper:', error);
