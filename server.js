@@ -1,4 +1,106 @@
-const express = require('express');
+async function exportDebugLogs() {
+            try {
+                const response = await fetch('/api/debug-logs');
+                const logs = await response.json();
+                
+                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'asics-scraper-debug-logs.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                alert('Error exporting logs: ' + error.message);
+            }
+        }
+
+        async function exportResults() {
+            try {
+                const response = await fetch('/api/export-results');
+                const data = await response.json();
+                
+                if (data.success && data.products.length > 0) {
+                    // Convert to CSV
+                    const csvContent = convertToCSV(data.products);
+                    
+                    // Download CSV
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'asics-scraper-results-' + new Date().toISOString().split('T')[0] + '.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    alert('✅ CSV exported with ' + data.products.length + ' products!');
+                } else {
+                    alert('❌ No results to export. Run a scraping session first.');
+                }
+            } catch (error) {
+                alert('Error exporting results: ' + error.message);
+            }
+        }
+
+        async function viewAllResults() {
+            try {
+                const response = await fetch('/api/export-results');
+                const data = await response.json();
+                
+                if (data.success && data.products.length > 0) {
+                    let html = '<div style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;">';
+                    html += '<h4>All Scraped Products (' + data.products.length + '):</h4>';
+                    
+                    data.products.forEach((product, index) => {
+                        html += '<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
+                        html += '<strong>' + (index + 1) + '. ' + product.name + '</strong><br>';
+                        html += 'SKU: ' + product.sku + '<br>';
+                        html += 'Price: ' + product.price + '<br>';
+                        html += 'URL: ' + product.sourceUrl + '<br>';
+                        if (product.link) html += 'Product Link: ' + product.link + '<br>';
+                        html += 'Scraped: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
+                        html += '</div>';
+                    });
+                    
+                    html += '</div>';
+                    
+                    // Show in a modal-style overlay
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
+                    
+                    const modal = document.createElement('div');
+                    modal.style.cssText = 'background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow-y: auto;';
+                    modal.innerHTML = html + '<br><button onclick="this.parentElement.parentElement.remove()" class="btn">Close</button>';
+                    
+                    overlay.appendChild(modal);
+                    document.body.appendChild(overlay);
+                } else {
+                    alert('❌ No results to view. Run a scraping session first.');
+                }
+            } catch (error) {
+                alert('Error viewing results: ' + error.message);
+            }
+        }
+
+        function convertToCSV(products) {
+            const headers = ['Name', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Scraped At'];
+            let csv = headers.join(',') + '\\n';
+            
+            products.forEach(product => {
+                const row = [
+                    '"' + (product.name || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sku || '').replace(/"/g, '""') + '"',
+                    '"' + (product.price || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
+                    '"' + (product.link || '').replace(/"/g, '""') + '"',
+                    '"' + (product.imageUrl || '').replace(/"/g, '""') + '"',
+                    '"' + (product.extractedAt || '').replace(/"/g, '""') + '"'
+                ];
+                csv += row.join(',') + '\\n';
+            });
+            
+            return csv;
+        }const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
 const cron = require('node-cron');
@@ -214,6 +316,8 @@ class CleanDebugScraper {
                 </button>
                 <button onclick="debugSinglePage()" class="btn info">🐛 Debug Single Page</button>
                 <button onclick="exportDebugLogs()" class="btn">📋 Export Debug Logs</button>
+                <button onclick="exportResults()" class="btn">📄 Export Results CSV</button>
+                <button onclick="viewAllResults()" class="btn">👁️ View All Results</button>
                 
                 <div id="scrapingStatus" style="margin-top: 15px;"></div>
                 <div id="progressBar" style="margin-top: 10px;"></div>
@@ -467,21 +571,91 @@ class CleanDebugScraper {
             }
         }
 
-        async function exportDebugLogs() {
+        async function exportResults() {
             try {
-                const response = await fetch('/api/debug-logs');
-                const logs = await response.json();
+                const response = await fetch('/api/export-results');
+                const data = await response.json();
                 
-                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'asics-scraper-debug-logs.json';
-                a.click();
-                URL.revokeObjectURL(url);
+                if (data.success && data.products.length > 0) {
+                    // Convert to CSV
+                    const csvContent = convertToCSV(data.products);
+                    
+                    // Download CSV
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'asics-scraper-results-' + new Date().toISOString().split('T')[0] + '.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    alert('✅ CSV exported with ' + data.products.length + ' products!');
+                } else {
+                    alert('❌ No results to export. Run a scraping session first.');
+                }
             } catch (error) {
-                alert('Error exporting logs: ' + error.message);
+                alert('Error exporting results: ' + error.message);
             }
+        }
+
+        async function viewAllResults() {
+            try {
+                const response = await fetch('/api/export-results');
+                const data = await response.json();
+                
+                if (data.success && data.products.length > 0) {
+                    let html = '<div style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;">';
+                    html += '<h4>All Scraped Products (' + data.products.length + '):</h4>';
+                    
+                    data.products.forEach((product, index) => {
+                        html += '<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
+                        html += '<strong>' + (index + 1) + '. ' + product.name + '</strong><br>';
+                        html += 'SKU: ' + product.sku + '<br>';
+                        html += 'Price: ' + product.price + '<br>';
+                        html += 'URL: ' + product.sourceUrl + '<br>';
+                        if (product.link) html += 'Product Link: ' + product.link + '<br>';
+                        html += 'Scraped: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
+                        html += '</div>';
+                    });
+                    
+                    html += '</div>';
+                    
+                    // Show in a modal-style overlay
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
+                    
+                    const modal = document.createElement('div');
+                    modal.style.cssText = 'background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow-y: auto;';
+                    modal.innerHTML = html + '<br><button onclick="this.parentElement.parentElement.remove()" class="btn">Close</button>';
+                    
+                    overlay.appendChild(modal);
+                    document.body.appendChild(overlay);
+                } else {
+                    alert('❌ No results to view. Run a scraping session first.');
+                }
+            } catch (error) {
+                alert('Error viewing results: ' + error.message);
+            }
+        }
+
+        function convertToCSV(products) {
+            const headers = ['Name', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Scraped At'];
+            let csv = headers.join(',') + '\\n';
+            
+            products.forEach(product => {
+                const row = [
+                    '"' + (product.name || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sku || '').replace(/"/g, '""') + '"',
+                    '"' + (product.price || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
+                    '"' + (product.link || '').replace(/"/g, '""') + '"',
+                    '"' + (product.imageUrl || '').replace(/"/g, '""') + '"',
+                    '"' + (product.extractedAt || '').replace(/"/g, '""') + '"'
+                ];
+                csv += row.join(',') + '\\n';
+            });
+            
+            return csv;
         }
 
         // Auto-refresh debug logs every 10 seconds
@@ -713,6 +887,44 @@ class CleanDebugScraper {
 
         this.app.get('/api/logs', (req, res) => {
             res.json(this.scrapingLogs.slice(-20)); // Return last 20 logs
+        });
+
+        // Export results endpoint
+        this.app.get('/api/export-results', (req, res) => {
+            try {
+                // Collect all products from scraping logs
+                const allProducts = [];
+                
+                this.scrapingLogs.forEach(log => {
+                    if (log.status === 'success' && log.products) {
+                        log.products.forEach(product => {
+                            allProducts.push({
+                                ...product,
+                                sourceUrl: log.url,
+                                scrapedAt: log.timestamp,
+                                batchId: log.batchId
+                            });
+                        });
+                    }
+                });
+                
+                this.addDebugLog('Export results requested', { productCount: allProducts.length });
+                
+                res.json({
+                    success: true,
+                    products: allProducts,
+                    totalProducts: allProducts.length,
+                    exportedAt: new Date().toISOString()
+                });
+                
+            } catch (error) {
+                this.addDebugLog('Export results error', { error: error.message });
+                res.json({
+                    success: false,
+                    error: error.message,
+                    products: []
+                });
+            }
         });
     }
 
