@@ -67,6 +67,7 @@ class ASICSManualLoginScraper {
         // In-memory storage for results
         this.inMemoryLogs = [];
         this.activeBrowser = null; // Store the authenticated browser session
+        this.scrapingProgress = { active: false, total: 0, completed: 0 };
         
         this.setupMiddleware();
         this.setupRoutes();
@@ -152,7 +153,7 @@ class ASICSManualLoginScraper {
                 </head>
                 <body>
                     <div class="container">
-                        <h1>🚀 ASICS Manual Login Scraper Dashboard</h1>
+                        <h1>🚀 ASICS Simple Authentication Scraper</h1>
                         
                         <div class="card status">
                             <h2>Status: Active ✅</h2>
@@ -164,38 +165,34 @@ class ASICSManualLoginScraper {
 
                         <div class="card auth-status ${this.activeBrowser ? 'logged-in' : 'logged-out'}">
                             <h3>${this.activeBrowser ? '✅ ASICS B2B Session Active' : '❌ Not Logged Into ASICS B2B'}</h3>
-                            <p>${this.activeBrowser ? 'You are logged in and ready to scrape!' : 'You need to log in first before scraping.'}</p>
+                            <p>${this.activeBrowser ? 'You are logged in and ready to scrape!' : 'You need to authenticate first before scraping.'}</p>
                         </div>
                         
                         <div class="card info">
-                            <h3>🎯 How Manual Login + Auto Scrape Works</h3>
+                            <h3>🎯 How Simple Authentication Works</h3>
                             <div style="display: flex; align-items: center; margin: 10px 0;">
                                 <span class="step-number">1</span>
                                 <span>Click "Login to ASICS B2B" below</span>
                             </div>
                             <div style="display: flex; align-items: center; margin: 10px 0;">
                                 <span class="step-number">2</span>
-                                <span>A new browser tab opens to ASICS B2B</span>
+                                <span>Enter your ASICS B2B credentials</span>
                             </div>
                             <div style="display: flex; align-items: center; margin: 10px 0;">
                                 <span class="step-number">3</span>
-                                <span>Log in manually (handle any 2FA, CAPTCHA, etc.)</span>
+                                <span>Scraper authenticates automatically</span>
                             </div>
                             <div style="display: flex; align-items: center; margin: 10px 0;">
                                 <span class="step-number">4</span>
-                                <span>Click "Ready to Scrape" when logged in</span>
-                            </div>
-                            <div style="display: flex; align-items: center; margin: 10px 0;">
-                                <span class="step-number">5</span>
-                                <span>Scraper automatically scrapes all your URLs!</span>
+                                <span>Click "Start Auto Scraping" to scrape all URLs!</span>
                             </div>
                         </div>
                         
                         <div class="card">
                             <h3>🎯 Quick Actions</h3>
                             <div style="text-align: center;">
-                                <button onclick="startManualLogin()" class="btn btn-primary btn-large">
-                                    🔐 Setup Session Verification
+                                <button onclick="startLogin()" class="btn btn-primary btn-large">
+                                    🔐 Login to ASICS B2B
                                 </button>
                                 <button onclick="startScraping()" class="btn btn-success btn-large" ${this.activeBrowser ? '' : 'disabled style="opacity: 0.5;"'}>
                                     🚀 Start Auto Scraping
@@ -205,24 +202,18 @@ class ASICSManualLoginScraper {
                                 </button>
                             </div>
                             <div id="result" style="margin-top: 20px;"></div>
-                            <div id="sessionVerification" class="hidden" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                                <h4>🔐 Simple Authentication</h4>
-                                <p>Since session transfer is tricky, let's just authenticate directly:</p>
-                                
-                                <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                                    <h5>Enter Your ASICS B2B Credentials</h5>
-                                    <div class="form-group">
-                                        <label>Username/Email:</label>
-                                        <input type="text" id="asicsUsername" class="form-control" placeholder="your.email@company.com" />
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Password:</label>
-                                        <input type="password" id="asicsPassword" class="form-control" placeholder="Your password" />
-                                    </div>
-                                    <button onclick="simpleAuth()" class="btn btn-success" style="width: 100%;">🔐 Login & Authenticate</button>
+                            <div id="loginForm" class="hidden" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                                <h4>🔐 ASICS B2B Authentication</h4>
+                                <div class="form-group">
+                                    <label>Username/Email:</label>
+                                    <input type="text" id="asicsUsername" class="form-control" placeholder="your.email@company.com" />
                                 </div>
-                                
-                                <div style="font-size: 12px; color: #666; margin-top: 15px;">
+                                <div class="form-group">
+                                    <label>Password:</label>
+                                    <input type="password" id="asicsPassword" class="form-control" placeholder="Your password" />
+                                </div>
+                                <button onclick="authenticate()" class="btn btn-success" style="width: 100%;">🔐 Authenticate</button>
+                                <div style="font-size: 12px; color: #666; margin-top: 10px;">
                                     <strong>🔒 Secure:</strong> Credentials are only used once to authenticate, not stored.
                                 </div>
                             </div>
@@ -283,42 +274,15 @@ class ASICSManualLoginScraper {
                     </div>
                     
                     <script>
-                        let loginWindow = null;
-                        
-                        async function startManualLogin() {
+                        function startLogin() {
+                            const loginForm = document.getElementById('loginForm');
                             const result = document.getElementById('result');
-                            const sessionDiv = document.getElementById('sessionVerification');
                             
-                            result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px;">🔐 Setting up session verification...</div>';
-                            
-                            try {
-                                const response = await fetch('/start-login', {method: 'POST'});
-                                const data = await response.json();
-                                
-                                if (data.success) {
-                                    sessionDiv.classList.remove('hidden');
-                                    result.innerHTML = \`
-                                        <div style="color: green; padding: 15px; background: #d4edda; border-radius: 4px;">
-                                            ✅ Ready for session verification!
-                                            <br><br>
-                                            <strong>Next steps:</strong>
-                                            <ol style="text-align: left; margin: 10px 0;">
-                                                <li>Click the link below to open ASICS B2B</li>
-                                                <li>Log in with your credentials</li>
-                                                <li>Copy any URL from the logged-in ASICS B2B site</li>
-                                                <li>Paste it in the field below and click "Verify Session"</li>
-                                            </ol>
-                                        </div>
-                                    \`;
-                                } else {
-                                    result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px;">❌ Failed to setup: ' + data.error + '</div>';
-                                }
-                            } catch (error) {
-                                result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px;">❌ Error: ' + error.message + '</div>';
-                            }
+                            loginForm.classList.remove('hidden');
+                            result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px;">Please enter your ASICS B2B credentials below.</div>';
                         }
                         
-                        async function simpleAuth() {
+                        async function authenticate() {
                             const username = document.getElementById('asicsUsername').value.trim();
                             const password = document.getElementById('asicsPassword').value.trim();
                             const result = document.getElementById('result');
@@ -331,14 +295,12 @@ class ASICSManualLoginScraper {
                             result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px;">🔐 Authenticating with ASICS B2B...</div>';
                             
                             try {
-                                const response = await fetch('/simple-auth', {
+                                const response = await fetch('/authenticate', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ 
-                                        credentials: {
-                                            username: username,
-                                            password: password
-                                        }
+                                        username: username,
+                                        password: password
                                     })
                                 });
                                 
@@ -350,17 +312,16 @@ class ASICSManualLoginScraper {
                                             ✅ Authentication successful! 
                                             <br><br>
                                             <strong>Logged into:</strong> \${data.details?.title || 'ASICS B2B'}
-                                            <br>
-                                            <strong>URL:</strong> \${data.details?.url || 'ASICS B2B Portal'}
                                             <br><br>
                                             You can now start scraping!
                                         </div>
                                     \`;
                                     
-                                    // Clear the password field for security
+                                    // Clear the password field and hide form
                                     document.getElementById('asicsPassword').value = '';
+                                    document.getElementById('loginForm').classList.add('hidden');
                                     
-                                    setTimeout(() => location.reload(), 3000);
+                                    setTimeout(() => location.reload(), 2000);
                                 } else {
                                     result.innerHTML = \`
                                         <div style="color: red; padding: 15px; background: #f8d7da; border-radius: 4px;">
@@ -370,18 +331,12 @@ class ASICSManualLoginScraper {
                                             <br>• Username/email is correct
                                             <br>• Password is correct
                                             <br>• Account is not locked
-                                            <br>• No 2FA required (not supported yet)
                                         </div>
                                     \`;
                                 }
                             } catch (error) {
                                 result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px;">❌ Error: ' + error.message + '</div>';
                             }
-                        }
-                        
-                        async function cancelLogin() {
-                            const response = await fetch('/cancel-login', {method: 'POST'});
-                            location.reload();
                         }
                         
                         async function startScraping() {
@@ -397,8 +352,6 @@ class ASICSManualLoginScraper {
                                 
                                 if (data.success) {
                                     result.innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border-radius: 4px;">✅ Scraping started! Check progress below and logs for details.</div>';
-                                    
-                                    // Poll for progress
                                     pollProgress();
                                 } else {
                                     result.innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border-radius: 4px;">❌ Failed to start scraping: ' + data.error + '</div>';
@@ -441,7 +394,7 @@ class ASICSManualLoginScraper {
                             }
                         }
                         
-                        // URL Management Functions (same as before)
+                        // URL Management Functions
                         async function addUrl() {
                             const urlInput = document.getElementById('newUrl');
                             const url = urlInput.value.trim();
@@ -559,7 +512,6 @@ class ASICSManualLoginScraper {
                         // Auto-refresh auth status every 30 seconds
                         setInterval(() => {
                             fetch('/auth-status').then(r => r.json()).then(data => {
-                                // Update auth status without full page reload
                                 const authCard = document.querySelector('.auth-status');
                                 if (data.authenticated !== authCard.classList.contains('logged-in')) {
                                     location.reload();
@@ -573,43 +525,18 @@ class ASICSManualLoginScraper {
         });
 
         // Authentication endpoints
-        this.app.post('/start-login', async (req, res) => {
+        this.app.post('/authenticate', async (req, res) => {
             try {
-                console.log('🔐 Starting session verification...');
+                const { username, password } = req.body;
                 
-                res.json({ 
-                    success: true, 
-                    message: 'Please log into ASICS B2B in your browser, then return here.',
-                    loginUrl: 'https://b2b.asics.com/',
-                    instructions: [
-                        'Open https://b2b.asics.com/ in a new tab',
-                        'Log in with your credentials', 
-                        'Once logged in, copy any ASICS B2B URL from your browser',
-                        'Paste it below to verify your session'
-                    ]
-                });
-                
-            } catch (error) {
-                console.error('❌ Failed to start login session:', error.message);
-                res.json({ 
-                    success: false, 
-                    error: error.message 
-                });
-            }
-        });
-
-        this.app.post('/simple-auth', async (req, res) => {
-            try {
-                const { credentials } = req.body;
-                
-                if (!credentials.username || !credentials.password) {
+                if (!username || !password) {
                     return res.json({
                         success: false,
                         error: 'Username and password required'
                     });
                 }
                 
-                console.log('🔐 Starting simple authentication...');
+                console.log('🔐 Starting authentication...');
                 
                 // Create a new browser session
                 const browser = await puppeteer.connect({
@@ -647,8 +574,8 @@ class ASICSManualLoginScraper {
                 await page.waitForSelector('#username', { timeout: 10000 });
                 await page.waitForSelector('#password', { timeout: 10000 });
                 
-                await page.type('#username', credentials.username);
-                await page.type('#password', credentials.password);
+                await page.type('#username', username);
+                await page.type('#password', password);
 
                 // Submit login
                 console.log('🔐 Submitting login...');
@@ -709,19 +636,6 @@ class ASICSManualLoginScraper {
             }
         });
 
-        this.app.post('/cancel-login', async (req, res) => {
-            try {
-                if (this.activeBrowser) {
-                    await this.activeBrowser.close();
-                    this.activeBrowser = null;
-                    this.loginPage = null;
-                }
-                res.json({ success: true });
-            } catch (error) {
-                res.json({ success: false, error: error.message });
-            }
-        });
-
         this.app.post('/logout', async (req, res) => {
             try {
                 if (this.activeBrowser) {
@@ -748,7 +662,7 @@ class ASICSManualLoginScraper {
                 if (!this.activeBrowser) {
                     return res.json({ 
                         success: false, 
-                        error: 'Not logged in. Please login first.' 
+                        error: 'Not logged in. Please authenticate first.' 
                     });
                 }
                 
@@ -759,7 +673,7 @@ class ASICSManualLoginScraper {
                     });
                 }
                 
-                console.log('🚀 Starting manual scraping session...');
+                console.log('🚀 Starting scraping session...');
                 
                 // Start scraping in background
                 this.scrapingProgress = {
@@ -932,7 +846,7 @@ class ASICSManualLoginScraper {
         const startTime = Date.now();
         const batchId = `manual_${Date.now()}`;
         
-        console.log(`🚀 Starting manual scraping: ${this.urlsToMonitor.length} URLs`);
+        console.log(`🚀 Starting scraping: ${this.urlsToMonitor.length} URLs`);
         
         try {
             if (!this.activeBrowser || !this.loginPage) {
@@ -980,10 +894,10 @@ class ASICSManualLoginScraper {
             this.scrapingProgress.active = false;
             
             const duration = Math.round((Date.now() - startTime) / 1000);
-            console.log(`✅ Manual scraping completed in ${duration} seconds`);
+            console.log(`✅ Scraping completed in ${duration} seconds`);
             
         } catch (error) {
-            console.error(`❌ Manual scraping failed:`, error.message);
+            console.error(`❌ Scraping failed:`, error.message);
             this.scrapingProgress.active = false;
         }
     }
@@ -1277,8 +1191,8 @@ class ASICSManualLoginScraper {
 
     async start() {
         try {
-            console.log('🚀 Initializing ASICS Manual Login Scraper...');
-            console.log('🎯 Manual Login + Auto Scrape mode activated!');
+            console.log('🚀 Initializing ASICS Simple Authentication Scraper...');
+            console.log('🎯 Simple Authentication + Auto Scrape mode activated!');
             
             const memUsage = process.memoryUsage();
             const formatMB = (bytes) => `${Math.round(bytes / 1024 / 1024)}MB`;
@@ -1288,12 +1202,12 @@ class ASICSManualLoginScraper {
             });
 
             this.app.listen(this.port, () => {
-                console.log(`🚀 ASICS Manual Login Scraper running on port ${this.port}`);
+                console.log(`🚀 ASICS Simple Authentication Scraper running on port ${this.port}`);
                 console.log('📊 Dashboard available at /dashboard');
             });
             
-            console.log(`✅ Manual login scraper initialized with ${this.urlsToMonitor.length} URLs`);
-            console.log('🎯 Ready for manual login + automated scraping!');
+            console.log(`✅ Simple authentication scraper initialized with ${this.urlsToMonitor.length} URLs`);
+            console.log('🎯 Ready for simple authentication + automated scraping!');
 
         } catch (error) {
             console.error('❌ Failed to start scraper:', error);
