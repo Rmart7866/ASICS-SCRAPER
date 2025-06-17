@@ -83,12 +83,18 @@ async function exportDebugLogs() {
         }
 
         function convertToCSV(products) {
-            const headers = ['Name', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Scraped At'];
+            const headers = ['Product Name', 'Style ID', 'Color Code', 'Color Name', 'Size US', 'Quantity', 'Raw Quantity', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Extracted At'];
             let csv = headers.join(',') + '\\n';
             
             products.forEach(product => {
                 const row = [
-                    '"' + (product.name || '').replace(/"/g, '""') + '"',
+                    '"' + (product.productName || product.name || '').replace(/"/g, '""') + '"',
+                    '"' + (product.styleId || '').replace(/"/g, '""') + '"',
+                    '"' + (product.colorCode || '').replace(/"/g, '""') + '"',
+                    '"' + (product.colorName || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sizeUS || '').replace(/"/g, '""') + '"',
+                    (product.quantity || 0),
+                    '"' + (product.rawQuantity || '').replace(/"/g, '""') + '"',
                     '"' + (product.sku || '').replace(/"/g, '""') + '"',
                     '"' + (product.price || '').replace(/"/g, '""') + '"',
                     '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
@@ -1172,141 +1178,228 @@ class CleanDebugScraper {
             const products = [];
             const debugInfo = [];
             
-            // Define comprehensive selectors
-            const productSelectors = [
-                '.product-item',
-                '.product-card',
-                '.product-tile',
-                '.product',
-                '[data-product-id]',
-                '[data-product]',
-                '.grid-item',
-                '.item',
-                '[class*="product"]'
-            ];
+            // ASICS B2B specific extraction logic
+            debugInfo.push('Starting ASICS B2B inventory extraction...');
             
-            const nameSelectors = [
-                '.product-name',
-                '.product-title',
-                '.name',
-                '.title',
-                'h1', 'h2', 'h3', 'h4',
-                '[class*="name"]',
-                '[class*="title"]'
-            ];
+            // Get product info from page
+            const productInfo = {
+                productName: 'Unknown Product',
+                styleId: 'Unknown'
+            };
             
-            const priceSelectors = [
-                '.price',
-                '.product-price',
-                '.cost',
-                '.amount',
-                '.msrp',
-                '[class*="price"]',
-                '[class*="cost"]'
-            ];
-            
-            const skuSelectors = [
-                '.sku',
-                '.product-id',
-                '.style-number',
-                '[data-sku]',
-                '[data-product-id]',
-                '[class*="sku"]'
-            ];
-            
-            // Try each product selector
-            let productElements = [];
-            for (const selector of productSelectors) {
-                const elements = document.querySelectorAll(selector);
-                debugInfo.push('Selector "' + selector + '": ' + elements.length + ' elements');
-                if (elements.length > 0 && productElements.length === 0) {
-                    productElements = Array.from(elements);
-                    debugInfo.push('Using selector: ' + selector);
+            // Try to find product name
+            const productNameSelectors = ['h1', '[data-testid="product-name"]', '.product-name', '.product-title'];
+            for (let selector of productNameSelectors) {
+                const element = document.querySelector(selector);
+                if (element && element.textContent.trim()) {
+                    productInfo.productName = element.textContent.trim();
+                    debugInfo.push('Found product name: ' + productInfo.productName);
                     break;
                 }
             }
             
-            debugInfo.push('Total product elements found: ' + productElements.length);
+            // Extract style ID from URL
+            const urlMatch = window.location.href.match(/\/([0-9A-Z]+)(?:\?|$)/);
+            if (urlMatch) {
+                productInfo.styleId = urlMatch[1];
+                debugInfo.push('Found style ID from URL: ' + productInfo.styleId);
+            }
             
-            // Extract data from each product element
-            productElements.forEach((element, index) => {
-                try {
-                    let name = '';
-                    let price = '';
-                    let sku = '';
+            // Look for ASICS color information 
+            const colors = [];
+            const colorElements = document.querySelectorAll('li div.flex.items-center.gap-2');
+            debugInfo.push('Found color elements: ' + colorElements.length);
+            
+            colorElements.forEach(el => {
+                const spans = el.querySelectorAll('span');
+                if (spans.length >= 3) {
+                    const code = spans[0].textContent.trim();
+                    const separator = spans[1].textContent.trim();
+                    const name = spans[2].textContent.trim();
                     
-                    // Try to find name
-                    for (const selector of nameSelectors) {
-                        const nameEl = element.querySelector(selector);
-                        if (nameEl && nameEl.textContent?.trim()) {
-                            name = nameEl.textContent.trim();
-                            break;
-                        }
+                    if (code.match(/^\d{3}$/) && separator === '-') {
+                        colors.push({ code, name });
+                        debugInfo.push('Found color: ' + code + ' - ' + name);
                     }
-                    
-                    // Try to find price
-                    for (const selector of priceSelectors) {
-                        const priceEl = element.querySelector(selector);
-                        if (priceEl && priceEl.textContent?.trim()) {
-                            price = priceEl.textContent.trim();
-                            break;
-                        }
-                    }
-                    
-                    // Try to find SKU
-                    for (const selector of skuSelectors) {
-                        const skuEl = element.querySelector(selector);
-                        if (skuEl && skuEl.textContent?.trim()) {
-                            sku = skuEl.textContent.trim();
-                            break;
-                        } else if (skuEl && skuEl.getAttribute && skuEl.getAttribute('data-sku')) {
-                            sku = skuEl.getAttribute('data-sku');
-                            break;
-                        }
-                    }
-                    
-                    // Get additional data
-                    const imageUrl = element.querySelector('img')?.src || '';
-                    const link = element.querySelector('a')?.href || '';
-                    
-                    if (name || sku || price) {
-                        products.push({
-                            name: name || 'Unknown Product',
-                            price: price || 'Price not available',
-                            sku: sku || 'product-' + index,
-                            imageUrl,
-                            link,
-                            extractedAt: new Date().toISOString()
-                        });
-                        
-                        debugInfo.push('Product ' + (index + 1) + ': name="' + name + '" price="' + price + '" sku="' + sku + '"');
-                    }
-                } catch (productError) {
-                    debugInfo.push('Error processing product ' + index + ': ' + productError.message);
                 }
             });
             
-            // If no products found with standard selectors, try page-level extraction
-            if (products.length === 0) {
-                debugInfo.push('No products found with standard selectors, trying page-level extraction');
+            // Fallback: look for color patterns in text
+            if (colors.length === 0) {
+                debugInfo.push('No colors found with primary method, trying fallback...');
+                const allElements = document.querySelectorAll('*');
+                const seenCodes = new Set();
                 
-                const pageTitle = document.title;
-                const bodyText = document.body ? document.body.innerText : '';
+                allElements.forEach(el => {
+                    const text = el.textContent.trim();
+                    const colorMatch = text.match(/^(\d{3})\s*-\s*([A-Z\/\s]+)$/);
+                    if (colorMatch && !seenCodes.has(colorMatch[1])) {
+                        seenCodes.add(colorMatch[1]);
+                        colors.push({
+                            code: colorMatch[1],
+                            name: colorMatch[2].trim()
+                        });
+                        debugInfo.push('Found color (fallback): ' + colorMatch[1] + ' - ' + colorMatch[2]);
+                    }
+                });
+            }
+            
+            // Look for size headers
+            const sizes = [];
+            const sizeElements = document.querySelectorAll('.bg-primary.text-white');
+            debugInfo.push('Found size header elements: ' + sizeElements.length);
+            
+            sizeElements.forEach(el => {
+                const sizeText = el.textContent.trim();
+                if (sizeText.match(/^\d+\.?\d*$/)) {
+                    sizes.push(sizeText);
+                    debugInfo.push('Found size: ' + sizeText);
+                }
+            });
+            
+            // Default sizes if none found
+            if (sizes.length === 0) {
+                sizes.push(...['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '14', '15']);
+                debugInfo.push('Using default size range: ' + sizes.length + ' sizes');
+            }
+            
+            // Look for quantity matrix
+            const quantityMatrix = [];
+            const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
+            debugInfo.push('Found quantity row elements: ' + quantityRows.length);
+            
+            quantityRows.forEach((row, index) => {
+                const quantities = [];
+                const cells = row.querySelectorAll('.flex.items-center.justify-center span');
+                debugInfo.push('Row ' + index + ' has ' + cells.length + ' cells');
                 
-                if (pageTitle && (bodyText.includes('SKU') || bodyText.includes('Price') || window.location.href.includes('product'))) {
+                cells.forEach(cell => {
+                    const text = cell.textContent.trim();
+                    if (text.match(/^\d+\+?$/) || text === '0' || text === '0+') {
+                        quantities.push(text);
+                    }
+                });
+                
+                debugInfo.push('Row ' + index + ' quantities: ' + JSON.stringify(quantities));
+                
+                if (quantities.length > 0) {
+                    quantityMatrix.push(quantities);
+                }
+            });
+            
+            // Alternative quantity detection if no matrix found
+            if (quantityMatrix.length === 0) {
+                debugInfo.push('No quantity matrix found, trying alternative approach...');
+                
+                const potentialQuantityElements = document.querySelectorAll('span, div');
+                const quantityPattern = /^(\d+\+?|0\+?)$/;
+                const foundQuantities = [];
+                
+                potentialQuantityElements.forEach(el => {
+                    const text = el.textContent.trim();
+                    if (quantityPattern.test(text)) {
+                        const rect = el.getBoundingClientRect();
+                        foundQuantities.push({
+                            text,
+                            x: rect.left,
+                            y: rect.top
+                        });
+                    }
+                });
+                
+                debugInfo.push('Found potential quantities: ' + foundQuantities.map(q => q.text).join(', '));
+                
+                // Group by Y coordinate (rows)
+                foundQuantities.sort((a, b) => a.y - b.y);
+                
+                let currentRow = [];
+                let lastY = -1;
+                const tolerance = 10;
+                
+                foundQuantities.forEach(q => {
+                    if (lastY === -1 || Math.abs(q.y - lastY) < tolerance) {
+                        currentRow.push(q.text);
+                        lastY = q.y;
+                    } else {
+                        if (currentRow.length > 5) {
+                            quantityMatrix.push([...currentRow]);
+                        }
+                        currentRow = [q.text];
+                        lastY = q.y;
+                    }
+                });
+                
+                if (currentRow.length > 5) {
+                    quantityMatrix.push(currentRow);
+                }
+            }
+            
+            debugInfo.push('Final quantity matrix: ' + quantityMatrix.length + ' rows');
+            
+            // Create inventory records
+            if (colors.length > 0 && sizes.length > 0) {
+                colors.forEach((color, colorIndex) => {
+                    const colorQuantities = quantityMatrix[colorIndex] || [];
+                    
+                    sizes.forEach((size, sizeIndex) => {
+                        const rawQuantity = colorQuantities[sizeIndex] || '0';
+                        let quantity = 0;
+                        
+                        // Parse quantity
+                        if (rawQuantity && rawQuantity !== '-' && rawQuantity !== '') {
+                            if (rawQuantity.includes('+')) {
+                                const num = parseInt(rawQuantity.replace('+', ''));
+                                quantity = isNaN(num) ? 0 : num;
+                            } else {
+                                const num = parseInt(rawQuantity);
+                                quantity = isNaN(num) ? 0 : num;
+                            }
+                        }
+                        
+                        products.push({
+                            name: productInfo.productName,
+                            sku: productInfo.styleId + '-' + color.code + '-' + size,
+                            price: 'See B2B portal for pricing',
+                            productName: productInfo.productName,
+                            styleId: productInfo.styleId,
+                            colorCode: color.code,
+                            colorName: color.name,
+                            sizeUS: size,
+                            quantity: quantity,
+                            rawQuantity: rawQuantity,
+                            imageUrl: '',
+                            link: window.location.href,
+                            extractedAt: new Date().toISOString()
+                        });
+                    });
+                });
+                
+                debugInfo.push('Created ' + products.length + ' inventory records');
+            } else {
+                debugInfo.push('Insufficient data - Colors: ' + colors.length + ', Sizes: ' + sizes.length);
+                
+                // Fallback: create a basic product record
+                if (productInfo.productName !== 'Unknown Product') {
                     products.push({
-                        name: pageTitle,
-                        price: 'See page for pricing',
-                        sku: 'page-detected',
+                        name: productInfo.productName,
+                        sku: productInfo.styleId,
+                        price: 'See B2B portal for pricing',
+                        productName: productInfo.productName,
+                        styleId: productInfo.styleId,
+                        colorCode: 'N/A',
+                        colorName: 'N/A',
+                        sizeUS: 'N/A',
+                        quantity: 0,
+                        rawQuantity: 'N/A',
                         imageUrl: '',
                         link: window.location.href,
                         extractedAt: new Date().toISOString()
                     });
-                    debugInfo.push('Added page-level product from title');
+                    debugInfo.push('Created fallback product record');
                 }
             }
             
-            // Store debug info in global for access
+            // Store debug info globally
             window.extractionDebugInfo = debugInfo;
             
             return products;
