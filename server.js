@@ -206,43 +206,24 @@ class ASICSManualLoginScraper {
                             </div>
                             <div id="result" style="margin-top: 20px;"></div>
                             <div id="sessionVerification" class="hidden" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                                <h4>📋 Session Setup Instructions</h4>
-                                
-                                <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                                    <h5>Step 1: Login to ASICS B2B</h5>
-                                    <p>1. <a href="https://b2b.asics.com/" target="_blank" style="font-weight: bold;">🔗 Open ASICS B2B in a new tab</a></p>
-                                    <p>2. Log in with your credentials (handle any 2FA, CAPTCHA, etc.)</p>
-                                    <p>3. Navigate to any product page or category page</p>
-                                </div>
-                                
-                                <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                                    <h5>Step 2: Get Session Information</h5>
-                                    <p>In your logged-in ASICS B2B tab, press <strong>F12</strong> to open Developer Tools:</p>
-                                    <ol style="font-size: 13px;">
-                                        <li>Click the <strong>Console</strong> tab</li>
-                                        <li>Paste this code and press Enter:</li>
-                                    </ol>
-                                    <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; margin: 10px 0;">
-                                        console.log('URL:', window.location.href); console.log('Cookies:', document.cookie);
-                                    </div>
-                                    <p style="font-size: 13px;">3. Copy the URL and cookie information that appears</p>
-                                </div>
+                                <h4>🔐 Simple Authentication</h4>
+                                <p>Since session transfer is tricky, let's just authenticate directly:</p>
                                 
                                 <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                                    <h5>Step 3: Verify Session</h5>
+                                    <h5>Enter Your ASICS B2B Credentials</h5>
                                     <div class="form-group">
-                                        <label>ASICS B2B URL (from Step 2):</label>
-                                        <input type="url" id="sessionUrl" class="form-control" placeholder="https://b2b.asics.com/us/en-us/..." />
+                                        <label>Username/Email:</label>
+                                        <input type="text" id="asicsUsername" class="form-control" placeholder="your.email@company.com" />
                                     </div>
                                     <div class="form-group">
-                                        <label>Cookies (from Step 2):</label>
-                                        <textarea id="sessionCookies" class="form-control" rows="3" placeholder="Paste the cookie information here..."></textarea>
+                                        <label>Password:</label>
+                                        <input type="password" id="asicsPassword" class="form-control" placeholder="Your password" />
                                     </div>
-                                    <button onclick="verifySession()" class="btn btn-success" style="width: 100%;">✅ Verify Session</button>
+                                    <button onclick="simpleAuth()" class="btn btn-success" style="width: 100%;">🔐 Login & Authenticate</button>
                                 </div>
                                 
                                 <div style="font-size: 12px; color: #666; margin-top: 15px;">
-                                    <strong>💡 Tip:</strong> Make sure you're on a product page or category page in ASICS B2B, not just the homepage.
+                                    <strong>🔒 Secure:</strong> Credentials are only used once to authenticate, not stored.
                                 </div>
                             </div>
                             <div id="progress" style="margin-top: 10px;"></div>
@@ -337,36 +318,26 @@ class ASICSManualLoginScraper {
                             }
                         }
                         
-                        async function verifySession() {
-                            const sessionUrl = document.getElementById('sessionUrl').value.trim();
-                            const sessionCookies = document.getElementById('sessionCookies').value.trim();
+                        async function simpleAuth() {
+                            const username = document.getElementById('asicsUsername').value.trim();
+                            const password = document.getElementById('asicsPassword').value.trim();
                             const result = document.getElementById('result');
                             
-                            if (!sessionUrl) {
-                                alert('Please enter the URL from your logged-in ASICS B2B session');
+                            if (!username || !password) {
+                                alert('Please enter both username and password');
                                 return;
                             }
                             
-                            if (!sessionUrl.includes('b2b.asics.com')) {
-                                alert('Please enter a valid ASICS B2B URL');
-                                return;
-                            }
-                            
-                            if (!sessionCookies) {
-                                alert('Please enter the cookie information from the console');
-                                return;
-                            }
-                            
-                            result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px;">🔍 Verifying session with provided data...</div>';
+                            result.innerHTML = '<div style="color: blue; padding: 10px; background: #e7f3ff; border-radius: 4px;">🔐 Authenticating with ASICS B2B...</div>';
                             
                             try {
-                                const response = await fetch('/verify-session', {
+                                const response = await fetch('/simple-auth', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ 
-                                        testUrl: sessionUrl,
-                                        sessionData: {
-                                            cookies: sessionCookies
+                                        credentials: {
+                                            username: username,
+                                            password: password
                                         }
                                     })
                                 });
@@ -376,40 +347,30 @@ class ASICSManualLoginScraper {
                                 if (data.success) {
                                     result.innerHTML = \`
                                         <div style="color: green; padding: 15px; background: #d4edda; border-radius: 4px;">
-                                            ✅ Session verified successfully! 
+                                            ✅ Authentication successful! 
                                             <br><br>
-                                            <strong>Verified URL:</strong> \${data.details?.url || sessionUrl}
+                                            <strong>Logged into:</strong> \${data.details?.title || 'ASICS B2B'}
                                             <br>
-                                            <strong>Page Title:</strong> \${data.details?.title || 'ASICS B2B'}
+                                            <strong>URL:</strong> \${data.details?.url || 'ASICS B2B Portal'}
                                             <br><br>
                                             You can now start scraping!
                                         </div>
                                     \`;
+                                    
+                                    // Clear the password field for security
+                                    document.getElementById('asicsPassword').value = '';
+                                    
                                     setTimeout(() => location.reload(), 3000);
                                 } else {
-                                    let errorDetails = '';
-                                    if (data.details) {
-                                        errorDetails = \`
-                                            <br><br>
-                                            <strong>Debug Info:</strong>
-                                            <br>• URL: \${data.details.url}
-                                            <br>• Title: \${data.details.title}
-                                            <br>• Not on login page: \${data.details.checks?.notOnLoginPage ? '✅' : '❌'}
-                                            <br>• Has B2B content: \${data.details.checks?.hasB2BContent ? '✅' : '❌'}
-                                            <br>• Not blocked: \${data.details.checks?.notBlocked ? '✅' : '❌'}
-                                            <br>• Has user content: \${data.details.checks?.hasUserContent ? '✅' : '❌'}
-                                        \`;
-                                    }
-                                    
                                     result.innerHTML = \`
                                         <div style="color: red; padding: 15px; background: #f8d7da; border-radius: 4px;">
-                                            ❌ Session verification failed: \${data.error}
-                                            \${errorDetails}
+                                            ❌ Authentication failed: \${data.error}
                                             <br><br>
-                                            <strong>💡 Try:</strong>
-                                            <br>• Make sure you're fully logged into ASICS B2B
-                                            <br>• Use a product page URL instead of homepage
-                                            <br>• Check that cookies were copied correctly
+                                            <strong>💡 Please check:</strong>
+                                            <br>• Username/email is correct
+                                            <br>• Password is correct
+                                            <br>• Account is not locked
+                                            <br>• No 2FA required (not supported yet)
                                         </div>
                                     \`;
                                 }
@@ -637,18 +598,18 @@ class ASICSManualLoginScraper {
             }
         });
 
-        this.app.post('/verify-session', async (req, res) => {
+        this.app.post('/simple-auth', async (req, res) => {
             try {
-                const { testUrl, sessionData } = req.body;
+                const { credentials } = req.body;
                 
-                if (!testUrl || !testUrl.includes('b2b.asics.com')) {
+                if (!credentials.username || !credentials.password) {
                     return res.json({
                         success: false,
-                        error: 'Please provide a valid ASICS B2B URL'
+                        error: 'Username and password required'
                     });
                 }
                 
-                console.log('🔍 Verifying session with provided data...');
+                console.log('🔐 Starting simple authentication...');
                 
                 // Create a new browser session
                 const browser = await puppeteer.connect({
@@ -657,117 +618,93 @@ class ASICSManualLoginScraper {
                 
                 const page = await browser.newPage();
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+                await page.setViewport({ width: 1366, height: 768 });
                 
-                // Set up the session data if provided
-                if (sessionData && sessionData.cookies) {
-                    try {
-                        console.log('🍪 Setting up session cookies...');
-                        
-                        // Parse and set cookies
-                        const cookieArray = sessionData.cookies.split(';').map(cookie => {
-                            const [name, value] = cookie.trim().split('=');
-                            if (name && value) {
-                                return {
-                                    name: name.trim(),
-                                    value: value.trim(),
-                                    domain: '.asics.com',
-                                    path: '/'
-                                };
-                            }
-                            return null;
-                        }).filter(c => c !== null);
-                        
-                        if (cookieArray.length > 0) {
-                            await page.setCookie(...cookieArray);
-                            console.log(`✅ Set ${cookieArray.length} cookies`);
-                        }
-                        
-                    } catch (cookieError) {
-                        console.log('⚠️ Cookie setup issue:', cookieError.message);
-                    }
-                }
-                
-                // Try to access the test URL
-                console.log(`🔗 Testing access to: ${testUrl}`);
-                await page.goto(testUrl, { 
-                    waitUntil: 'networkidle0', 
+                // Navigate to ASICS B2B login
+                console.log('🚀 Navigating to ASICS B2B login...');
+                await page.goto('https://b2b.asics.com/authentication/login', { 
+                    waitUntil: 'networkidle0',
                     timeout: 30000 
                 });
+
+                // Handle region selection if needed
+                const pageContent = await page.evaluate(() => {
+                    const bodyText = document.body ? document.body.innerText : '';
+                    return {
+                        hasCountrySelection: bodyText.includes('Please Select The Region') || bodyText.includes('United States'),
+                        hasLoginForm: document.querySelector('input[type="password"]') !== null
+                    };
+                });
+
+                if (pageContent.hasCountrySelection && !pageContent.hasLoginForm) {
+                    console.log('🌍 Selecting United States...');
+                    await page.click('text=United States');
+                    await page.waitForSelector('input[type="password"]', { timeout: 10000 });
+                }
+
+                // Fill in credentials
+                console.log('📝 Filling credentials...');
+                await page.waitForSelector('#username', { timeout: 10000 });
+                await page.waitForSelector('#password', { timeout: 10000 });
                 
-                // Wait a bit for the page to fully load
-                await page.waitForTimeout(3000);
+                await page.type('#username', credentials.username);
+                await page.type('#password', credentials.password);
+
+                // Submit login
+                console.log('🔐 Submitting login...');
+                await page.click('button[type="submit"], button');
                 
-                // Check if we're logged in
-                const sessionCheck = await page.evaluate(() => {
+                // Wait and check result
+                await page.waitForTimeout(5000);
+                
+                const loginResult = await page.evaluate(() => {
                     const url = window.location.href;
+                    const title = document.title;
                     const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
-                    const title = document.title.toLowerCase();
                     
-                    console.log('Current URL:', url);
-                    console.log('Page title:', title);
-                    console.log('Body sample:', bodyText.slice(0, 500));
-                    
-                    // Multiple checks for logged-in status
-                    const notOnLoginPage = !url.includes('login') && !url.includes('authentication') && !url.includes('signin');
-                    const hasB2BContent = bodyText.includes('b2b') || bodyText.includes('catalog') || bodyText.includes('product') || bodyText.includes('dashboard');
-                    const notBlocked = !bodyText.includes('access denied') && !bodyText.includes('unauthorized') && !bodyText.includes('please log in');
-                    const hasUserContent = bodyText.includes('account') || bodyText.includes('profile') || bodyText.includes('logout');
+                    const success = !url.includes('login') && !url.includes('authentication');
                     
                     return {
                         url,
                         title,
-                        bodyText: bodyText.slice(0, 1000),
-                        notOnLoginPage,
-                        hasB2BContent,
-                        notBlocked,
-                        hasUserContent,
-                        overallValid: notOnLoginPage && hasB2BContent && notBlocked
+                        success,
+                        bodyPreview: bodyText.slice(0, 500)
                     };
                 });
-                
-                console.log('📊 Session check results:', sessionCheck);
-                
-                if (sessionCheck.overallValid) {
-                    // Store the browser session
+
+                if (loginResult.success) {
+                    // Store the authenticated browser
                     this.activeBrowser = browser;
                     this.loginPage = page;
                     
-                    console.log('✅ Session verified successfully!');
+                    console.log('✅ Authentication successful!');
                     res.json({
                         success: true,
-                        message: 'Session verified successfully! You can now start scraping.',
+                        message: 'Successfully authenticated! Ready to scrape.',
                         details: {
-                            url: sessionCheck.url,
-                            title: sessionCheck.title
+                            url: loginResult.url,
+                            title: loginResult.title
                         }
                     });
                 } else {
                     await browser.close();
-                    console.log('❌ Session verification failed');
-                    console.log('Details:', sessionCheck);
-                    
+                    console.log('❌ Authentication failed');
                     res.json({
                         success: false,
-                        error: 'Session verification failed. Try using a different URL or check your login status.',
+                        error: 'Authentication failed. Please check credentials.',
                         details: {
-                            url: sessionCheck.url,
-                            title: sessionCheck.title,
-                            bodyPreview: sessionCheck.bodyText.slice(0, 200),
-                            checks: {
-                                notOnLoginPage: sessionCheck.notOnLoginPage,
-                                hasB2BContent: sessionCheck.hasB2BContent,
-                                notBlocked: sessionCheck.notBlocked,
-                                hasUserContent: sessionCheck.hasUserContent
-                            }
+                            url: loginResult.url,
+                            title: loginResult.title,
+                            bodyPreview: loginResult.bodyPreview
                         }
                     });
                 }
                 
             } catch (error) {
-                console.error('❌ Error verifying session:', error.message);
+                console.error('❌ Authentication error:', error.message);
                 res.json({
                     success: false,
-                    error: `Verification error: ${error.message}`
+                    error: error.message
                 });
             }
         });
