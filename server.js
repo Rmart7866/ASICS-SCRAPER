@@ -1037,15 +1037,15 @@ class EnhancedDebugScraper {
             let productElements = [];
             for (const selector of productSelectors) {
                 const elements = document.querySelectorAll(selector);
-                debugInfo.push(\`Selector "\${selector}": \${elements.length} elements\`);
+                debugInfo.push(`Selector "${selector}": ${elements.length} elements`);
                 if (elements.length > 0 && productElements.length === 0) {
                     productElements = Array.from(elements);
-                    debugInfo.push(\`Using selector: \${selector}\`);
+                    debugInfo.push(`Using selector: ${selector}`);
                     break;
                 }
             }
             
-            debugInfo.push(\`Total product elements found: \${productElements.length}\`);
+            debugInfo.push(`Total product elements found: ${productElements.length}`);
             
             // Extract data from each product element
             productElements.forEach((element, index) => {
@@ -1098,10 +1098,10 @@ class EnhancedDebugScraper {
                             extractedAt: new Date().toISOString()
                         });
                         
-                        debugInfo.push(\`Product \${index + 1}: name="\${name}" price="\${price}" sku="\${sku}"\`);
+                        debugInfo.push(`Product ${index + 1}: name="${name}" price="${price}" sku="${sku}"`);
                     }
                 } catch (productError) {
-                    debugInfo.push(\`Error processing product \${index}: \${productError.message}\`);
+                    debugInfo.push(`Error processing product ${index}: ${productError.message}`);
                 }
             });
             
@@ -1134,7 +1134,7 @@ class EnhancedDebugScraper {
 
     async startScraping() {
         const startTime = Date.now();
-        const batchId = \`enhanced_\${Date.now()}\`;
+        const batchId = `enhanced_${Date.now()}`;
         
         this.addDebugLog('Starting enhanced scraping session', { 
             urlCount: this.urlsToMonitor.length,
@@ -1148,7 +1148,7 @@ class EnhancedDebugScraper {
                 const url = this.urlsToMonitor[i];
                 
                 try {
-                    this.addDebugLog(\`Scraping URL \${i + 1}/\${this.urlsToMonitor.length}\`, { url });
+                    this.addDebugLog(`Scraping URL ${i + 1}/${this.urlsToMonitor.length}`, { url });
                     
                     // Rate limit between requests
                     if (i > 0) {
@@ -1170,13 +1170,13 @@ class EnhancedDebugScraper {
                     results.push(scrapingResult);
                     this.scrapingLogs.unshift(scrapingResult);
                     
-                    this.addDebugLog(\`Scraped \${result.products.length} products from \${url}\`);
+                    this.addDebugLog(`Scraped ${result.products.length} products from ${url}`);
                     
                     // Update progress
                     this.scrapingProgress.completed = i + 1;
                     
                 } catch (urlError) {
-                    this.addDebugLog(\`Failed to scrape \${url}\`, { error: urlError.message });
+                    this.addDebugLog(`Failed to scrape ${url}`, { error: urlError.message });
                     
                     const errorResult = {
                         url,
@@ -1200,7 +1200,7 @@ class EnhancedDebugScraper {
             
             const duration = Math.round((Date.now() - startTime) / 1000);
             this.addDebugLog('Scraping session completed', { 
-                duration: \`\${duration}s\`,
+                duration: `${duration}s`,
                 totalResults: results.length,
                 successCount: results.filter(r => r.status === 'success').length
             });
@@ -1226,7 +1226,7 @@ class EnhancedDebugScraper {
                     await this.pool.query(\`
                         INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at)
                         VALUES ($1, $2, $3, $4, $5, $6)
-                    \`, [
+                    `, [
                         result.batchId,
                         result.url,
                         result.status,
@@ -1239,10 +1239,10 @@ class EnhancedDebugScraper {
                         this.addDebugLog('Database schema issue - updating table');
                         await this.updateDatabaseSchema();
                         // Retry the insert
-                        await this.pool.query(\`
+                        await this.pool.query(`
                             INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at)
                             VALUES ($1, $2, $3, $4, $5, $6)
-                        \`, [
+                        `, [
                             result.batchId,
                             result.url,
                             result.status,
@@ -1270,7 +1270,7 @@ class EnhancedDebugScraper {
             // Add missing columns
             await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS url VARCHAR(1000)');
             await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS batch_id VARCHAR(255)');
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT \\'pending\\'');
+            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT \'pending\'');
             await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS product_count INTEGER DEFAULT 0');
             await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS error_message TEXT');
             await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
@@ -1338,15 +1338,15 @@ class EnhancedDebugScraper {
             this.addDebugLog('Database connection successful');
             
             // Create tables with all necessary columns
-            await this.pool.query(\`
+            await this.pool.query(`
                 CREATE TABLE IF NOT EXISTS monitored_urls (
                     id SERIAL PRIMARY KEY,
                     url VARCHAR(1000) NOT NULL UNIQUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            \`);
+            `);
             
-            await this.pool.query(\`
+            await this.pool.query(`
                 CREATE TABLE IF NOT EXISTS scrape_logs (
                     id SERIAL PRIMARY KEY,
                     url VARCHAR(1000),
@@ -1356,7 +1356,7 @@ class EnhancedDebugScraper {
                     batch_id VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            \`);
+            `);
 
             this.addDebugLog('Database initialization completed');
             
@@ -1376,9 +1376,9 @@ class EnhancedDebugScraper {
             this.addDebugLog('Starting Enhanced Debug ASICS Scraper');
             
             this.app.listen(this.port, () => {
-                console.log(\`🐛 Enhanced Debug Scraper running on port \${this.port}\`);
+                console.log(`🐛 Enhanced Debug Scraper running on port ${this.port}`);
                 console.log('📊 Dashboard available at /dashboard');
-                console.log('🎯 Ready for extensive debugging!\');
+                console.log('🎯 Ready for extensive debugging!');
                 this.addDebugLog('Server started successfully', { port: this.port });
             });
             
