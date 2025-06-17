@@ -1,111 +1,9 @@
-async function exportDebugLogs() {
-            try {
-                const response = await fetch('/api/debug-logs');
-                const logs = await response.json();
-                
-                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'asics-scraper-debug-logs.json';
-                a.click();
-                URL.revokeObjectURL(url);
-            } catch (error) {
-                alert('Error exporting logs: ' + error.message);
-            }
-        }
-
-        async function exportResults() {
-            try {
-                const response = await fetch('/api/export-results');
-                const data = await response.json();
-                
-                if (data.success && data.products.length > 0) {
-                    // Convert to CSV
-                    const csvContent = convertToCSV(data.products);
-                    
-                    // Download CSV
-                    const blob = new Blob([csvContent], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'asics-scraper-results-' + new Date().toISOString().split('T')[0] + '.csv';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    
-                    alert('✅ CSV exported with ' + data.products.length + ' products!');
-                } else {
-                    alert('❌ No results to export. Run a scraping session first.');
-                }
-            } catch (error) {
-                alert('Error exporting results: ' + error.message);
-            }
-        }
-
-        async function viewAllResults() {
-            try {
-                const response = await fetch('/api/export-results');
-                const data = await response.json();
-                
-                if (data.success && data.products.length > 0) {
-                    let html = '<div style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;">';
-                    html += '<h4>All Scraped Products (' + data.products.length + '):</h4>';
-                    
-                    data.products.forEach((product, index) => {
-                        html += '<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
-                        html += '<strong>' + (index + 1) + '. ' + product.name + '</strong><br>';
-                        html += 'SKU: ' + product.sku + '<br>';
-                        html += 'Price: ' + product.price + '<br>';
-                        html += 'URL: ' + product.sourceUrl + '<br>';
-                        if (product.link) html += 'Product Link: ' + product.link + '<br>';
-                        html += 'Scraped: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
-                        html += '</div>';
-                    });
-                    
-                    html += '</div>';
-                    
-                    // Show in a modal-style overlay
-                    const overlay = document.createElement('div');
-                    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
-                    
-                    const modal = document.createElement('div');
-                    modal.style.cssText = 'background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow-y: auto;';
-                    modal.innerHTML = html + '<br><button onclick="this.parentElement.parentElement.remove()" class="btn">Close</button>';
-                    
-                    overlay.appendChild(modal);
-                    document.body.appendChild(overlay);
-                } else {
-                    alert('❌ No results to view. Run a scraping session first.');
-                }
-            } catch (error) {
-                alert('Error viewing results: ' + error.message);
-            }
-        }
-
-        function convertToCSV(products) {
-            const headers = ['Name', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Scraped At'];
-            let csv = headers.join(',') + '\\n';
-            
-            products.forEach(product => {
-                const row = [
-                    '"' + (product.name || '').replace(/"/g, '""') + '"',
-                    '"' + (product.sku || '').replace(/"/g, '""') + '"',
-                    '"' + (product.price || '').replace(/"/g, '""') + '"',
-                    '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
-                    '"' + (product.link || '').replace(/"/g, '""') + '"',
-                    '"' + (product.imageUrl || '').replace(/"/g, '""') + '"',
-                    '"' + (product.extractedAt || '').replace(/"/g, '""') + '"'
-                ];
-                csv += row.join(',') + '\\n';
-            });
-            
-            return csv;
-        }const express = require('express');
+const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
 const cron = require('node-cron');
 
-class CleanDebugScraper {
+class FullyUpdatedScraper {
     constructor() {
         this.app = express();
         this.port = process.env.PORT || 10000;
@@ -208,16 +106,17 @@ class CleanDebugScraper {
         // Health check
         this.app.get('/', (req, res) => {
             res.json({
-                status: 'Clean Debug Scraper Active',
+                status: 'Fully Updated ASICS Scraper Active',
                 uptime: process.uptime(),
                 urlCount: this.urlsToMonitor.length,
                 sessionValid: this.sessionValid,
                 cookieCount: this.sessionCookies.length,
-                debugLogCount: this.debugLogs.length
+                debugLogCount: this.debugLogs.length,
+                version: '2.0-enhanced'
             });
         });
 
-        // Dashboard
+        // Enhanced Dashboard with all new features
         this.app.get('/dashboard', (req, res) => {
             const sessionStatusClass = this.sessionValid ? 'success' : 'danger';
             const sessionStatusText = this.sessionValid ? '✅ Session Valid' : '❌ No Session';
@@ -234,7 +133,7 @@ class CleanDebugScraper {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clean Debug ASICS Scraper</title>
+    <title>Enhanced ASICS Scraper v2.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; }
@@ -249,6 +148,7 @@ class CleanDebugScraper {
         .btn:hover { background: #0056b3; }
         .btn.success { background: #28a745; }
         .btn.danger { background: #dc3545; }
+        .btn.warning { background: #ffc107; color: #212529; }
         .btn.large { padding: 16px 32px; font-size: 16px; }
         .input-group { margin: 15px 0; }
         .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
@@ -262,13 +162,14 @@ class CleanDebugScraper {
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
         .code { background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; margin: 10px 0; }
+        .new-feature { border: 2px solid #28a745 !important; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🐛 Clean Debug ASICS Scraper</h1>
-            <p>Cookie-based authentication with extensive debugging</p>
+            <h1>🚀 Enhanced ASICS Scraper v2.0</h1>
+            <p>Cookie-based authentication with advanced debugging & real-time testing</p>
             <div style="margin-top: 15px;">
                 <span class="btn ${sessionStatusClass}" style="cursor: default;">
                     ${sessionStatusText}
@@ -283,8 +184,8 @@ class CleanDebugScraper {
         </div>
 
         <div class="grid-3">
-            <div class="card">
-                <h3>🍪 Session Management</h3>
+            <div class="card new-feature">
+                <h3>🍪 Enhanced Session Management</h3>
                 <div class="input-group">
                     <label for="cookieString">Session Cookies:</label>
                     <textarea id="cookieString" rows="3" placeholder="Paste your cookies here..."></textarea>
@@ -295,13 +196,14 @@ class CleanDebugScraper {
                 <div id="sessionResult" style="margin-top: 10px;"></div>
             </div>
 
-            <div class="card">
-                <h3>🔗 URL Management</h3>
+            <div class="card new-feature">
+                <h3>🔗 Advanced URL Testing</h3>
                 <div class="input-group">
-                    <input type="url" id="newUrl" placeholder="https://b2b.asics.com/...">
+                    <input type="url" id="newUrl" placeholder="https://b2b.asics.com/orders/...">
                 </div>
                 <button onclick="addUrl()" class="btn">➕ Add URL</button>
-                <button onclick="testSingleUrl()" class="btn info">🧪 Test Single URL</button>
+                <button onclick="testSpecificUrl()" class="btn warning">⚡ Test URL Now</button>
+                <button onclick="debugSinglePage()" class="btn info">🐛 Deep Debug</button>
                 
                 <h4 style="margin-top: 15px;">URLs (${this.urlsToMonitor.length}):</h4>
                 <ul id="urlList" class="url-list">
@@ -310,14 +212,13 @@ class CleanDebugScraper {
             </div>
 
             <div class="card">
-                <h3>🚀 Scraping Controls</h3>
+                <h3>🚀 Scraping & Export</h3>
                 <button onclick="startScraping()" class="btn success large" ${this.sessionValid ? '' : 'disabled'}>
                     ▶️ Start Scraping
                 </button>
-                <button onclick="debugSinglePage()" class="btn info">🐛 Debug Single Page</button>
-                <button onclick="exportDebugLogs()" class="btn">📋 Export Debug Logs</button>
                 <button onclick="exportResults()" class="btn">📄 Export Results CSV</button>
                 <button onclick="viewAllResults()" class="btn">👁️ View All Results</button>
+                <button onclick="exportDebugLogs()" class="btn">📋 Export Debug Logs</button>
                 
                 <div id="scrapingStatus" style="margin-top: 15px;"></div>
                 <div id="progressBar" style="margin-top: 10px;"></div>
@@ -333,8 +234,8 @@ class CleanDebugScraper {
                 </div>
             </div>
 
-            <div class="card">
-                <h3>🐛 Debug Logs</h3>
+            <div class="card new-feature">
+                <h3>🐛 Enhanced Debug Logs</h3>
                 <button onclick="refreshDebugLogs()" class="btn">🔄 Refresh Debug</button>
                 <button onclick="clearDebugLogs()" class="btn danger">🗑️ Clear Debug</button>
                 <div id="debugLogs" class="debug-logs">
@@ -343,19 +244,29 @@ class CleanDebugScraper {
             </div>
         </div>
 
-        <div class="card info">
-            <h3>💡 Debug Information</h3>
-            <p><strong>Common Issues:</strong></p>
-            <ul style="margin: 10px 0 10px 20px;">
-                <li><strong>429 errors:</strong> Browserless rate limiting - wait between requests</li>
-                <li><strong>0 products found:</strong> Page selectors may need adjustment</li>
-                <li><strong>Session invalid:</strong> Cookies may have expired</li>
-                <li><strong>Database errors:</strong> Schema may need updating</li>
-            </ul>
+        <div class="card info new-feature">
+            <h3>🍪 Real-Time Cookie Extraction Guide</h3>
+            <p><strong>For best results with order pages:</strong></p>
+            
+            <div style="margin: 15px 0; padding: 15px; background: #e7f3ff; border-radius: 8px;">
+                <h4>🚀 Quick Method (Recommended)</h4>
+                <ol style="margin: 10px 0 10px 20px; line-height: 1.6;">
+                    <li><strong>Open ASICS B2B</strong> in a new tab</li>
+                    <li><strong>Log in and navigate</strong> to your working order page</li>
+                    <li><strong>Verify page loads</strong> with inventory data visible</li>
+                    <li><strong>Extract cookies immediately</strong> using F12 → Console</li>
+                    <li><strong>Paste here and test</strong> within 60 seconds</li>
+                </ol>
+            </div>
             
             <div class="code">
-                <strong>Quick Cookie Extract:</strong><br>
+                <strong>Cookie Extract Code:</strong><br>
                 document.cookie.split(';').map(c => c.trim()).join('; ')
+            </div>
+            
+            <div style="margin: 15px 0; padding: 15px; background: #fff3cd; border-radius: 8px;">
+                <h4>⚡ Immediate Testing</h4>
+                <p>Use <strong>"⚡ Test URL Now"</strong> to verify your exact order URLs work before full scraping.</p>
             </div>
         </div>
     </div>
@@ -409,6 +320,35 @@ class CleanDebugScraper {
             }
         }
 
+        async function testSpecificUrl() {
+            const url = document.getElementById('newUrl').value.trim();
+            if (!url) {
+                alert('Please enter a URL to test');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('sessionResult');
+            resultDiv.innerHTML = '<div class="info" style="padding: 10px; margin-top: 10px;">⚡ Testing URL immediately...</div>';
+            
+            try {
+                const response = await fetch('/api/test-specific-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    resultDiv.innerHTML = '<div class="success" style="padding: 10px; margin-top: 10px;">✅ URL accessible! No redirect to login.<br><strong>Title:</strong> ' + result.details.title + '<br><strong>Page Size:</strong> ' + result.details.pageSize + ' chars</div>';
+                } else {
+                    resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ URL failed: ' + result.message + '<br><strong>Redirected to:</strong> ' + result.details.finalUrl + '<br><strong>Title:</strong> ' + result.details.title + '</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
         async function clearSession() {
             if (!confirm('Clear current session?')) return;
             
@@ -427,7 +367,7 @@ class CleanDebugScraper {
             const statusDiv = document.getElementById('scrapingStatus');
             
             try {
-                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🐛 Debugging single page...</div>';
+                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🐛 Deep debugging page...</div>';
                 
                 const response = await fetch('/api/debug-page', {
                     method: 'POST',
@@ -452,13 +392,13 @@ class CleanDebugScraper {
             const statusDiv = document.getElementById('scrapingStatus');
             
             try {
-                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🚀 Starting scraping...</div>';
+                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🚀 Starting enhanced scraping...</div>';
                 
                 const response = await fetch('/api/start-scraping', { method: 'POST' });
                 const result = await response.json();
                 
                 if (result.success) {
-                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Scraping started!</div>';
+                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Enhanced scraping started!</div>';
                     pollProgress();
                 } else {
                     statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Failed: ' + result.error + '</div>';
@@ -481,7 +421,7 @@ class CleanDebugScraper {
                         setTimeout(pollProgress, 3000);
                     } else {
                         document.getElementById('scrapingStatus').innerHTML = 
-                            '<div class="success" style="padding: 10px;">🎉 Scraping completed!</div>';
+                            '<div class="success" style="padding: 10px;">🎉 Enhanced scraping completed!</div>';
                         refreshLogs();
                         refreshDebugLogs();
                     }
@@ -489,6 +429,95 @@ class CleanDebugScraper {
             } catch (error) {
                 console.error('Error polling progress:', error);
             }
+        }
+
+        async function exportResults() {
+            try {
+                const response = await fetch('/api/export-results');
+                const data = await response.json();
+                
+                if (data.success && data.products.length > 0) {
+                    const csvContent = convertToCSV(data.products);
+                    const blob = new Blob([csvContent], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'asics-enhanced-results-' + new Date().toISOString().split('T')[0] + '.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    
+                    alert('✅ Enhanced CSV exported with ' + data.products.length + ' products!');
+                } else {
+                    alert('❌ No results to export. Run a scraping session first.');
+                }
+            } catch (error) {
+                alert('Error exporting results: ' + error.message);
+            }
+        }
+
+        async function viewAllResults() {
+            try {
+                const response = await fetch('/api/export-results');
+                const data = await response.json();
+                
+                if (data.success && data.products.length > 0) {
+                    let html = '<div style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;">';
+                    html += '<h4>Enhanced Results (' + data.products.length + ' products):</h4>';
+                    
+                    data.products.forEach((product, index) => {
+                        html += '<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
+                        html += '<strong>' + (index + 1) + '. ' + product.name + '</strong><br>';
+                        html += 'SKU: ' + product.sku + '<br>';
+                        html += 'Price: ' + product.price + '<br>';
+                        if (product.quantity) html += 'Quantity: ' + product.quantity + '<br>';
+                        if (product.color) html += 'Color: ' + product.color + '<br>';
+                        if (product.size) html += 'Size: ' + product.size + '<br>';
+                        html += 'Source: ' + product.sourceUrl + '<br>';
+                        html += 'Scraped: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
+                        html += '</div>';
+                    });
+                    
+                    html += '</div>';
+                    
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
+                    
+                    const modal = document.createElement('div');
+                    modal.style.cssText = 'background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow-y: auto;';
+                    modal.innerHTML = html + '<br><button onclick="this.parentElement.parentElement.remove()" class="btn">Close</button>';
+                    
+                    overlay.appendChild(modal);
+                    document.body.appendChild(overlay);
+                } else {
+                    alert('❌ No results to view. Run a scraping session first.');
+                }
+            } catch (error) {
+                alert('Error viewing results: ' + error.message);
+            }
+        }
+
+        function convertToCSV(products) {
+            const headers = ['Name', 'SKU', 'Price', 'Quantity', 'Color', 'Size', 'Source URL', 'Product Link', 'Image URL', 'Inventory Data', 'Scraped At'];
+            let csv = headers.join(',') + '\\n';
+            
+            products.forEach(product => {
+                const row = [
+                    '"' + (product.name || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sku || '').replace(/"/g, '""') + '"',
+                    '"' + (product.price || '').replace(/"/g, '""') + '"',
+                    '"' + (product.quantity || '').replace(/"/g, '""') + '"',
+                    '"' + (product.color || '').replace(/"/g, '""') + '"',
+                    '"' + (product.size || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
+                    '"' + (product.link || '').replace(/"/g, '""') + '"',
+                    '"' + (product.imageUrl || '').replace(/"/g, '""') + '"',
+                    '"' + (product.inventoryData || '').replace(/"/g, '""') + '"',
+                    '"' + (product.extractedAt || '').replace(/"/g, '""') + '"'
+                ];
+                csv += row.join(',') + '\\n';
+            });
+            
+            return csv;
         }
 
         // URL Management
@@ -555,7 +584,6 @@ class CleanDebugScraper {
                     debugContainer.innerHTML = '<div style="color: #666;">No debug logs available.</div>';
                 }
                 
-                // Auto-scroll to bottom
                 debugContainer.scrollTop = debugContainer.scrollHeight;
             } catch (error) {
                 document.getElementById('debugLogs').innerHTML = '<div style="color: red;">Error loading debug logs: ' + error.message + '</div>';
@@ -571,91 +599,21 @@ class CleanDebugScraper {
             }
         }
 
-        async function exportResults() {
+        async function exportDebugLogs() {
             try {
-                const response = await fetch('/api/export-results');
-                const data = await response.json();
+                const response = await fetch('/api/debug-logs');
+                const logs = await response.json();
                 
-                if (data.success && data.products.length > 0) {
-                    // Convert to CSV
-                    const csvContent = convertToCSV(data.products);
-                    
-                    // Download CSV
-                    const blob = new Blob([csvContent], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'asics-scraper-results-' + new Date().toISOString().split('T')[0] + '.csv';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    
-                    alert('✅ CSV exported with ' + data.products.length + ' products!');
-                } else {
-                    alert('❌ No results to export. Run a scraping session first.');
-                }
+                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'asics-enhanced-debug-logs.json';
+                a.click();
+                URL.revokeObjectURL(url);
             } catch (error) {
-                alert('Error exporting results: ' + error.message);
+                alert('Error exporting logs: ' + error.message);
             }
-        }
-
-        async function viewAllResults() {
-            try {
-                const response = await fetch('/api/export-results');
-                const data = await response.json();
-                
-                if (data.success && data.products.length > 0) {
-                    let html = '<div style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;">';
-                    html += '<h4>All Scraped Products (' + data.products.length + '):</h4>';
-                    
-                    data.products.forEach((product, index) => {
-                        html += '<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
-                        html += '<strong>' + (index + 1) + '. ' + product.name + '</strong><br>';
-                        html += 'SKU: ' + product.sku + '<br>';
-                        html += 'Price: ' + product.price + '<br>';
-                        html += 'URL: ' + product.sourceUrl + '<br>';
-                        if (product.link) html += 'Product Link: ' + product.link + '<br>';
-                        html += 'Scraped: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
-                        html += '</div>';
-                    });
-                    
-                    html += '</div>';
-                    
-                    // Show in a modal-style overlay
-                    const overlay = document.createElement('div');
-                    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
-                    
-                    const modal = document.createElement('div');
-                    modal.style.cssText = 'background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow-y: auto;';
-                    modal.innerHTML = html + '<br><button onclick="this.parentElement.parentElement.remove()" class="btn">Close</button>';
-                    
-                    overlay.appendChild(modal);
-                    document.body.appendChild(overlay);
-                } else {
-                    alert('❌ No results to view. Run a scraping session first.');
-                }
-            } catch (error) {
-                alert('Error viewing results: ' + error.message);
-            }
-        }
-
-        function convertToCSV(products) {
-            const headers = ['Name', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Scraped At'];
-            let csv = headers.join(',') + '\\n';
-            
-            products.forEach(product => {
-                const row = [
-                    '"' + (product.name || '').replace(/"/g, '""') + '"',
-                    '"' + (product.sku || '').replace(/"/g, '""') + '"',
-                    '"' + (product.price || '').replace(/"/g, '""') + '"',
-                    '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
-                    '"' + (product.link || '').replace(/"/g, '""') + '"',
-                    '"' + (product.imageUrl || '').replace(/"/g, '""') + '"',
-                    '"' + (product.extractedAt || '').replace(/"/g, '""') + '"'
-                ];
-                csv += row.join(',') + '\\n';
-            });
-            
-            return csv;
         }
 
         // Auto-refresh debug logs every 10 seconds
@@ -668,10 +626,10 @@ class CleanDebugScraper {
             res.send(dashboardHtml);
         });
 
-        // API Routes
+        // Enhanced API Routes
         this.app.post('/api/set-cookies', async (req, res) => {
             try {
-                this.addDebugLog('API: Setting cookies');
+                this.addDebugLog('API: Setting cookies with enhanced processing');
                 const { cookies } = req.body;
                 
                 if (!cookies || typeof cookies !== 'string') {
@@ -685,8 +643,8 @@ class CleanDebugScraper {
 
                 this.addDebugLog('Raw cookie string received', { length: cookies.length, preview: cookies.slice(0, 100) });
 
-                // Parse cookies from string format
-                this.sessionCookies = this.parseCookieString(cookies);
+                // Enhanced cookie parsing
+                this.sessionCookies = this.parseCookieStringEnhanced(cookies);
                 
                 if (this.sessionCookies.length === 0) {
                     this.addDebugLog('No valid cookies parsed');
@@ -702,19 +660,20 @@ class CleanDebugScraper {
                 // Rate limit before testing
                 await this.rateLimitedBrowserlessRequest();
                 
-                // Test the session immediately
-                this.addDebugLog('Auto-testing session after setting cookies');
-                const testResult = await this.testSessionValidity();
+                // Enhanced session testing
+                this.addDebugLog('Auto-testing session with enhanced validation');
+                const testResult = await this.testSessionValidityEnhanced();
                 this.sessionValid = testResult.valid;
                 
-                this.addDebugLog('Auto-test completed', { valid: testResult.valid, message: testResult.message });
+                this.addDebugLog('Enhanced auto-test completed', { valid: testResult.valid, message: testResult.message });
                 
                 res.json({ 
                     success: true, 
                     cookieCount: this.sessionCookies.length,
                     sessionValid: this.sessionValid,
                     testResult: testResult.message,
-                    autoTestPassed: testResult.valid
+                    autoTestPassed: testResult.valid,
+                    enhancement: 'v2.0'
                 });
                 
             } catch (error) {
@@ -728,7 +687,7 @@ class CleanDebugScraper {
 
         this.app.get('/api/test-session', async (req, res) => {
             try {
-                this.addDebugLog('API: Testing session');
+                this.addDebugLog('API: Testing session with enhanced validation');
                 
                 if (!this.sessionCookies || this.sessionCookies.length === 0) {
                     this.addDebugLog('No cookies available for testing');
@@ -741,16 +700,17 @@ class CleanDebugScraper {
                 
                 await this.rateLimitedBrowserlessRequest();
                 
-                const result = await this.testSessionValidity();
+                const result = await this.testSessionValidityEnhanced();
                 this.sessionValid = result.valid;
                 
-                this.addDebugLog('Session test completed', { valid: result.valid, message: result.message });
+                this.addDebugLog('Enhanced session test completed', { valid: result.valid, message: result.message });
                 
                 res.json({
                     success: result.valid,
                     message: result.message,
                     details: result.details,
-                    cookieCount: this.sessionCookies.length
+                    cookieCount: this.sessionCookies.length,
+                    enhancement: 'v2.0'
                 });
                 
             } catch (error) {
@@ -762,10 +722,107 @@ class CleanDebugScraper {
             }
         });
 
+        // NEW: Immediate URL testing endpoint
+        this.app.post('/api/test-specific-url', async (req, res) => {
+            try {
+                const { url } = req.body;
+                this.addDebugLog('Testing specific URL immediately', { url });
+                
+                if (!this.sessionCookies || this.sessionCookies.length === 0) {
+                    return res.json({
+                        success: false,
+                        error: 'No cookies set. Please set session cookies first.',
+                        cookieCount: 0
+                    });
+                }
+                
+                await this.rateLimitedBrowserlessRequest();
+                
+                const browser = await puppeteer.connect({
+                    browserWSEndpoint: this.browserlessEndpoint,
+                    ignoreHTTPSErrors: true
+                });
+                
+                const page = await browser.newPage();
+                
+                // Enhanced headers for better compatibility
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+                await page.setExtraHTTPHeaders({
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Cache-Control': 'no-cache'
+                });
+                
+                // Set cookies
+                await page.setCookie(...this.sessionCookies);
+                
+                // Navigate directly to the URL
+                await page.goto(url, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 30000 
+                });
+                
+                await page.waitForTimeout(3000);
+                
+                // Enhanced page analysis
+                const result = await page.evaluate(() => {
+                    const currentUrl = window.location.href;
+                    const title = document.title;
+                    const bodyText = document.body ? document.body.innerText : '';
+                    
+                    return {
+                        requestedUrl: window.location.href,
+                        finalUrl: currentUrl,
+                        title: title,
+                        wasRedirected: currentUrl !== window.location.href,
+                        hasLoginForm: document.querySelector('input[type="password"]') !== null,
+                        urlHasLogin: currentUrl.includes('login') || currentUrl.includes('authentication'),
+                        bodyHasLoginText: bodyText.toLowerCase().includes('sign in') || bodyText.toLowerCase().includes('log in'),
+                        bodyPreview: bodyText.slice(0, 300),
+                        pageSize: bodyText.length,
+                        elementCount: document.querySelectorAll('*').length,
+                        hasOrderContent: bodyText.toLowerCase().includes('order') || bodyText.toLowerCase().includes('product'),
+                        hasInventoryContent: bodyText.toLowerCase().includes('inventory') || bodyText.toLowerCase().includes('quantity')
+                    };
+                });
+                
+                await browser.close();
+                
+                const isWorking = !result.hasLoginForm && !result.urlHasLogin && !result.bodyHasLoginText;
+                
+                this.addDebugLog('Specific URL test completed', { 
+                    url, 
+                    finalUrl: result.finalUrl,
+                    isWorking,
+                    title: result.title,
+                    hasOrderContent: result.hasOrderContent
+                });
+                
+                res.json({
+                    success: isWorking,
+                    message: isWorking ? 'URL accessible!' : 'URL redirected to login or has authentication issues',
+                    details: result,
+                    cookieCount: this.sessionCookies.length,
+                    enhancement: 'immediate-test-v2.0'
+                });
+                
+            } catch (error) {
+                this.addDebugLog('Specific URL test error', { error: error.message });
+                res.json({ 
+                    success: false, 
+                    error: 'Test failed: ' + error.message
+                });
+            }
+        });
+
         this.app.post('/api/debug-page', async (req, res) => {
             try {
                 const { url } = req.body;
-                this.addDebugLog('Starting single page debug', { url });
+                this.addDebugLog('Starting enhanced single page debug', { url });
                 
                 if (!this.sessionValid || this.sessionCookies.length === 0) {
                     return res.json({ success: false, error: 'No valid session. Please set cookies first.' });
@@ -773,16 +830,17 @@ class CleanDebugScraper {
 
                 await this.rateLimitedBrowserlessRequest();
                 
-                const result = await this.debugSinglePage(url);
+                const result = await this.debugSinglePageEnhanced(url);
                 
                 res.json({
                     success: true,
                     productCount: result.products.length,
-                    message: 'Debug completed. Check debug logs for details.'
+                    message: 'Enhanced debug completed. Check debug logs for details.',
+                    enhancement: 'deep-debug-v2.0'
                 });
                 
             } catch (error) {
-                this.addDebugLog('Debug page error', { error: error.message });
+                this.addDebugLog('Enhanced debug page error', { error: error.message });
                 res.json({ success: false, error: error.message });
             }
         });
@@ -804,7 +862,7 @@ class CleanDebugScraper {
                     return res.json({ success: false, error: 'No URLs to scrape. Add some URLs first.' });
                 }
 
-                this.addDebugLog('Starting scraping session', { urlCount: this.urlsToMonitor.length });
+                this.addDebugLog('Starting enhanced scraping session', { urlCount: this.urlsToMonitor.length });
                 
                 this.scrapingProgress = {
                     active: true,
@@ -813,13 +871,13 @@ class CleanDebugScraper {
                     results: []
                 };
                 
-                // Start scraping in background
-                setTimeout(() => this.startScraping(), 1000);
+                // Start enhanced scraping in background
+                setTimeout(() => this.startEnhancedScraping(), 1000);
                 
-                res.json({ success: true, message: 'Scraping started', urlCount: this.urlsToMonitor.length });
+                res.json({ success: true, message: 'Enhanced scraping started', urlCount: this.urlsToMonitor.length, enhancement: 'v2.0' });
                 
             } catch (error) {
-                this.addDebugLog('Error starting scraping', { error: error.message });
+                this.addDebugLog('Error starting enhanced scraping', { error: error.message });
                 res.json({ success: false, error: error.message });
             }
         });
@@ -877,7 +935,7 @@ class CleanDebugScraper {
 
         // Debug logs endpoint
         this.app.get('/api/debug-logs', (req, res) => {
-            res.json(this.debugLogs.slice(0, 50)); // Return last 50 debug logs
+            res.json(this.debugLogs.slice(0, 50));
         });
 
         this.app.delete('/api/debug-logs', (req, res) => {
@@ -886,13 +944,12 @@ class CleanDebugScraper {
         });
 
         this.app.get('/api/logs', (req, res) => {
-            res.json(this.scrapingLogs.slice(-20)); // Return last 20 logs
+            res.json(this.scrapingLogs.slice(-20));
         });
 
-        // Export results endpoint
+        // Enhanced export results endpoint
         this.app.get('/api/export-results', (req, res) => {
             try {
-                // Collect all products from scraping logs
                 const allProducts = [];
                 
                 this.scrapingLogs.forEach(log => {
@@ -908,17 +965,18 @@ class CleanDebugScraper {
                     }
                 });
                 
-                this.addDebugLog('Export results requested', { productCount: allProducts.length });
+                this.addDebugLog('Enhanced export results requested', { productCount: allProducts.length });
                 
                 res.json({
                     success: true,
                     products: allProducts,
                     totalProducts: allProducts.length,
-                    exportedAt: new Date().toISOString()
+                    exportedAt: new Date().toISOString(),
+                    enhancement: 'v2.0'
                 });
                 
             } catch (error) {
-                this.addDebugLog('Export results error', { error: error.message });
+                this.addDebugLog('Enhanced export results error', { error: error.message });
                 res.json({
                     success: false,
                     error: error.message,
@@ -928,9 +986,10 @@ class CleanDebugScraper {
         });
     }
 
-    parseCookieString(cookieString) {
+    // Enhanced cookie parsing
+    parseCookieStringEnhanced(cookieString) {
         try {
-            this.addDebugLog('Parsing cookie string', { length: cookieString.length });
+            this.addDebugLog('Enhanced cookie parsing started', { length: cookieString.length });
             
             const cookies = [];
             const cookiePairs = cookieString.split(';');
@@ -959,6 +1018,11 @@ class CleanDebugScraper {
                             };
                             
                             cookies.push(cookie);
+                            
+                            // Log important cookies
+                            if (name.includes('session') || name.includes('auth') || name.includes('token')) {
+                                this.addDebugLog('Important cookie found', { name: name, valueLength: value.length });
+                            }
                         } else {
                             this.addDebugLog('Skipped invalid cookie pair', { index: i, pair: trimmed.slice(0, 50) });
                         }
@@ -966,18 +1030,19 @@ class CleanDebugScraper {
                 }
             }
             
-            this.addDebugLog('Cookie parsing completed', { totalParsed: cookies.length });
+            this.addDebugLog('Enhanced cookie parsing completed', { totalParsed: cookies.length });
             return cookies;
             
         } catch (error) {
-            this.addDebugLog('Cookie parsing error', { error: error.message });
+            this.addDebugLog('Enhanced cookie parsing error', { error: error.message });
             return [];
         }
     }
 
-    async testSessionValidity() {
+    // Enhanced session validation
+    async testSessionValidityEnhanced() {
         try {
-            this.addDebugLog('Starting session validity test');
+            this.addDebugLog('Starting enhanced session validity test');
             
             if (this.sessionCookies.length === 0) {
                 this.addDebugLog('No cookies available for testing');
@@ -988,20 +1053,16 @@ class CleanDebugScraper {
                 };
             }
             
-            // Connect to browser
-            this.addDebugLog('Connecting to Browserless', { endpoint: this.browserlessEndpoint });
             const browser = await puppeteer.connect({
                 browserWSEndpoint: this.browserlessEndpoint,
                 ignoreHTTPSErrors: true
             });
             
-            this.addDebugLog('Browser connected, creating new page');
+            this.addDebugLog('Browser connected for enhanced testing');
             const page = await browser.newPage();
             
-            // Set user agent to match what works with the extension
+            // Enhanced browser setup
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-            
-            // Set additional headers that might be needed for B2B access
             await page.setExtraHTTPHeaders({
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -1011,8 +1072,6 @@ class CleanDebugScraper {
                 'Upgrade-Insecure-Requests': '1'
             });
             
-            // Validate and set cookies
-            this.addDebugLog('Setting cookies', { count: this.sessionCookies.length });
             const validCookies = this.sessionCookies.filter(cookie => 
                 cookie.name && cookie.value && cookie.name.trim() !== '' && cookie.value.trim() !== ''
             );
@@ -1028,9 +1087,9 @@ class CleanDebugScraper {
             }
             
             await page.setCookie(...validCookies);
-            this.addDebugLog('Cookies set successfully', { validCount: validCookies.length });
+            this.addDebugLog('Enhanced cookies set successfully', { validCount: validCookies.length });
             
-            // First, navigate to the main B2B portal to establish context
+            // First establish context by visiting main portal
             this.addDebugLog('Establishing B2B session context');
             await page.goto('https://b2b.asics.com/', { 
                 waitUntil: 'domcontentloaded', 
@@ -1039,19 +1098,16 @@ class CleanDebugScraper {
             
             await page.waitForTimeout(2000);
             
-            // Now test with a similar order URL to what you provided
-            this.addDebugLog('Testing order page access');
-            const testOrderUrl = 'https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18';
-            
+            // Now test with an order URL pattern
+            this.addDebugLog('Testing order page access pattern');
             try {
-                await page.goto(testOrderUrl, { 
+                await page.goto('https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18', { 
                     waitUntil: 'domcontentloaded', 
                     timeout: 30000 
                 });
                 
                 await page.waitForTimeout(3000);
                 
-                // Analyze the result
                 const result = await page.evaluate(() => {
                     const url = window.location.href;
                     const title = document.title;
@@ -1059,14 +1115,13 @@ class CleanDebugScraper {
                     
                     const hasLoginForm = document.querySelector('input[type="password"]') !== null;
                     const urlHasLogin = url.includes('login') || url.includes('authentication');
-                    const bodyHasLoginText = bodyText.includes('sign in') || bodyText.includes('log in') || bodyText.includes('password');
+                    const bodyHasLoginText = bodyText.includes('sign in') || bodyText.includes('log in');
                     
-                    // Check for order/product specific content
-                    const hasOrderContent = bodyText.includes('order') || bodyText.includes('product') || bodyText.includes('inventory');
-                    const hasQuantityInfo = bodyText.includes('quantity') || bodyText.includes('available') || bodyText.includes('stock');
+                    const hasOrderContent = bodyText.includes('order') || bodyText.includes('product');
+                    const hasInventoryContent = bodyText.includes('inventory') || bodyText.includes('quantity') || bodyText.includes('available');
                     
                     const isLoggedIn = !hasLoginForm && !urlHasLogin && !bodyHasLoginText;
-                    const hasOrderAccess = isLoggedIn && (hasOrderContent || hasQuantityInfo);
+                    const hasOrderAccess = isLoggedIn && (hasOrderContent || hasInventoryContent);
                     
                     return {
                         url,
@@ -1077,42 +1132,46 @@ class CleanDebugScraper {
                         urlHasLogin,
                         bodyHasLoginText,
                         hasOrderContent,
-                        hasQuantityInfo,
+                        hasInventoryContent,
                         bodyPreview: bodyText.slice(0, 500)
                     };
                 });
                 
                 await browser.close();
                 
-                this.addDebugLog('Order page test completed', result);
+                this.addDebugLog('Enhanced session test completed', result);
                 
                 if (result.isLoggedIn && result.hasOrderAccess) {
-                    this.addDebugLog('Session validation: SUCCESS - Order access confirmed');
+                    this.addDebugLog('Enhanced session validation: SUCCESS with order access');
                     return {
                         valid: true,
-                        message: 'Session is active with order access! Ready to scrape order pages.',
+                        message: 'Enhanced session active with order access! Ready for inventory scraping.',
                         details: result
                     };
                 } else if (result.isLoggedIn) {
-                    this.addDebugLog('Session validation: PARTIAL - Logged in but no order access');
+                    this.addDebugLog('Enhanced session validation: PARTIAL - logged in but limited access');
                     return {
                         valid: true,
-                        message: 'Session is active but may need order context. Try fresh order URLs.',
+                        message: 'Session active but may need fresh order context for inventory data.',
                         details: result
                     };
                 } else {
-                    this.addDebugLog('Session validation: FAILED', result);
+                    this.addDebugLog('Enhanced session validation: FAILED', result);
                     return {
                         valid: false,
-                        message: 'Session appears expired or invalid. Please get fresh cookies.',
+                        message: 'Session appears expired. Please get fresh cookies from active ASICS session.',
                         details: result
                     };
                 }
                 
             } catch (orderError) {
-                this.addDebugLog('Order URL test failed, trying basic B2B access', { error: orderError.message });
+                this.addDebugLog('Order URL test failed, trying basic test', { error: orderError.message });
                 
-                // Fallback to basic test
+                await page.goto('https://b2b.asics.com/us/en-us', { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 30000 
+                });
+                
                 const basicResult = await page.evaluate(() => {
                     const url = window.location.href;
                     const title = document.title;
@@ -1137,31 +1196,32 @@ class CleanDebugScraper {
                 if (basicResult.isLoggedIn) {
                     return {
                         valid: true,
-                        message: 'Basic session active, but order URLs may need fresh context.',
+                        message: 'Basic session active. Order URLs may need fresh context or different approach.',
                         details: basicResult
                     };
                 } else {
                     return {
                         valid: false,
-                        message: 'Session test failed. Please get fresh cookies.',
+                        message: 'Session test failed. Please extract fresh cookies from working ASICS session.',
                         details: basicResult
                     };
                 }
             }
             
         } catch (error) {
-            this.addDebugLog('Session test error', { error: error.message, stack: error.stack });
+            this.addDebugLog('Enhanced session test error', { error: error.message, stack: error.stack });
             return {
                 valid: false,
-                message: 'Session test error: ' + error.message,
+                message: 'Enhanced session test error: ' + error.message,
                 details: { error: error.message }
             };
         }
     }
 
-    async debugSinglePage(url) {
+    // Enhanced single page debugging
+    async debugSinglePageEnhanced(url) {
         try {
-            this.addDebugLog('Debug single page started', { url });
+            this.addDebugLog('Enhanced debug single page started', { url });
             
             await this.rateLimitedBrowserlessRequest();
             
@@ -1173,7 +1233,7 @@ class CleanDebugScraper {
             const page = await browser.newPage();
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
-            // Set additional headers for B2B access
+            // Enhanced headers for order pages
             await page.setExtraHTTPHeaders({
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.5',
@@ -1184,106 +1244,64 @@ class CleanDebugScraper {
                 'Cache-Control': 'no-cache'
             });
             
-            // Set session cookies
             await page.setCookie(...this.sessionCookies);
-            this.addDebugLog('Cookies set successfully for page debug');
+            this.addDebugLog('Enhanced cookies set for debug session');
             
-            // If this is an order URL, first establish session context
+            // For order URLs, establish context first
             if (url.includes('/orders/')) {
-                this.addDebugLog('Order URL detected, establishing session context');
+                this.addDebugLog('Order URL detected, establishing enhanced context');
                 
                 try {
-                    // First visit the main B2B portal
                     await page.goto('https://b2b.asics.com/', { 
                         waitUntil: 'domcontentloaded', 
                         timeout: 20000 
                     });
                     await page.waitForTimeout(2000);
                     
-                    this.addDebugLog('Main portal visited, checking session state');
-                    
-                    // Check if we're properly logged in
-                    const sessionCheck = await page.evaluate(() => {
-                        const url = window.location.href;
-                        const hasLogin = url.includes('login') || url.includes('authentication');
-                        const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
-                        const hasLoginText = bodyText.includes('sign in') || bodyText.includes('log in');
-                        
-                        return {
-                            url,
-                            hasLogin,
-                            hasLoginText,
-                            isLoggedIn: !hasLogin && !hasLoginText
-                        };
-                    });
-                    
-                    this.addDebugLog('Session state check', sessionCheck);
-                    
-                    if (!sessionCheck.isLoggedIn) {
-                        this.addDebugLog('Session context not established, may affect order page access');
-                    }
-                    
+                    this.addDebugLog('Enhanced context established');
                 } catch (contextError) {
-                    this.addDebugLog('Failed to establish session context', { error: contextError.message });
+                    this.addDebugLog('Enhanced context establishment failed', { error: contextError.message });
                 }
             }
             
-            this.addDebugLog('Navigating to debug URL', { url });
+            this.addDebugLog('Navigating to enhanced debug URL', { url });
             
-            // Navigate to target URL
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(3000);
             
-            // Get basic page information
-            this.addDebugLog('Getting basic page information');
-            const basicInfo = await page.evaluate(() => {
-                return {
-                    url: window.location.href,
-                    title: document.title,
-                    bodyLength: document.body ? document.body.innerText.length : 0,
-                    hasBody: !!document.body,
-                    readyState: document.readyState
-                };
-            });
-            
-            this.addDebugLog('Basic page info retrieved', basicInfo);
-            
-            // Wait for any dynamic content to load
-            this.addDebugLog('Waiting for page to stabilize');
-            await page.waitForTimeout(3000);
-            
-            // Enhanced page analysis for order pages
-            this.addDebugLog('Starting page structure analysis');
+            // Enhanced page analysis
             const pageAnalysis = await page.evaluate(() => {
                 const url = window.location.href;
                 const title = document.title;
                 const bodyText = document.body ? document.body.innerText : '';
                 
-                // Count different element types
+                // Enhanced element counting
                 const elementCounts = {
                     divs: document.querySelectorAll('div').length,
                     spans: document.querySelectorAll('span').length,
-                    products: document.querySelectorAll('[class*="product"], [data-product]').length,
-                    images: document.querySelectorAll('img').length,
-                    links: document.querySelectorAll('a').length,
+                    tables: document.querySelectorAll('table').length,
                     forms: document.querySelectorAll('form').length,
-                    grids: document.querySelectorAll('[class*="grid"], table').length
+                    inputs: document.querySelectorAll('input').length,
+                    buttons: document.querySelectorAll('button').length,
+                    images: document.querySelectorAll('img').length
                 };
                 
-                // Look for ASICS B2B specific elements
-                const asicsElements = {
-                    colorElements: document.querySelectorAll('[class*="color"], [data-color]').length,
-                    sizeElements: document.querySelectorAll('[class*="size"], [data-size]').length,
-                    quantityRows: document.querySelectorAll('tr, [class*="quantity"]').length
+                // Enhanced ASICS-specific analysis
+                const asicsAnalysis = {
+                    hasOrderForm: document.querySelector('form[action*="order"]') !== null,
+                    hasProductTable: document.querySelector('table') !== null,
+                    hasQuantityInputs: document.querySelectorAll('input[type="number"]').length,
+                    hasColorSelectors: document.querySelectorAll('[data-color], .color, .variant').length,
+                    hasPriceElements: document.querySelectorAll('.price, .cost, .amount').length
                 };
                 
-                // Look for inventory-related text patterns
-                const textPatterns = {
-                    colorCodes: (bodyText.match(/color[:\s]*[A-Z0-9]{3,}/gi) || []).slice(0, 5),
-                    quantities: (bodyText.match(/\d+\s*(qty|quantity|available|stock|units)/gi) || []).slice(0, 5),
-                    hasOrderText: bodyText.toLowerCase().includes('order'),
-                    hasProductText: bodyText.toLowerCase().includes('product'),
-                    hasInventoryText: bodyText.toLowerCase().includes('inventory') || bodyText.toLowerCase().includes('available')
+                // Enhanced text pattern analysis
+                const textAnalysis = {
+                    hasInventoryKeywords: /inventory|stock|available|quantity|qty/i.test(bodyText),
+                    hasOrderKeywords: /order|purchase|cart|checkout/i.test(bodyText),
+                    hasProductKeywords: /product|item|sku|model/i.test(bodyText),
+                    colorCodes: (bodyText.match(/\b[A-Z0-9]{3}\b/g) || []).slice(0, 10),
+                    numbers: (bodyText.match(/\b\d+\b/g) || []).slice(0, 20)
                 };
                 
                 return {
@@ -1291,33 +1309,24 @@ class CleanDebugScraper {
                     title,
                     bodyLength: bodyText.length,
                     elementCounts,
-                    asicsElements,
-                    textPatterns,
+                    asicsAnalysis,
+                    textAnalysis,
                     hasLoginRedirect: url.includes('login') || url.includes('authentication'),
-                    bodyPreview: bodyText.slice(0, 500)
+                    bodyPreview: bodyText.slice(0, 1000),
+                    isOrderPage: url.includes('/orders/'),
+                    isProductPage: url.includes('/products/')
                 };
             });
             
-            this.addDebugLog('Page analysis completed', pageAnalysis);
+            this.addDebugLog('Enhanced page analysis completed', pageAnalysis);
             
-            // Extract products using enhanced selectors
-            this.addDebugLog('Starting product extraction');
-            const products = await this.extractProductsWithDebugging(page);
-            this.addDebugLog('Product extraction completed', { productCount: products.length });
+            // Enhanced product extraction
+            this.addDebugLog('Starting enhanced product extraction');
+            const products = await this.extractProductsEnhanced(page);
+            this.addDebugLog('Enhanced product extraction completed', { productCount: products.length });
             
-            // Get extraction debug info
-            const extractionDebug = await page.evaluate(() => {
-                return window.extractionDebugInfo || [];
-            });
-            
-            if (extractionDebug.length > 0) {
-                this.addDebugLog('Product extraction debug info', { debugMessages: extractionDebug });
-            }
-            
-            this.addDebugLog('Browser closed successfully');
             await browser.close();
-            
-            this.addDebugLog('Debug single page completed', { 
+            this.addDebugLog('Enhanced debug session completed', { 
                 productCount: products.length,
                 url: pageAnalysis.url,
                 title: pageAnalysis.title
@@ -1326,540 +1335,37 @@ class CleanDebugScraper {
             return {
                 url: pageAnalysis.url,
                 products,
-                analysis: pageAnalysis,
-                extractionDebug
+                analysis: pageAnalysis
             };
             
         } catch (error) {
-            this.addDebugLog('Debug single page error', { url, error: error.message });
+            this.addDebugLog('Enhanced debug single page error', { url, error: error.message });
             throw error;
         }
     }
 
-    async extractProductsWithDebugging(page) {
+    // Enhanced product extraction
+    async extractProductsEnhanced(page) {
         return await page.evaluate(() => {
             const products = [];
             const debugInfo = [];
             
-            // Enhanced selectors specifically for ASICS B2B order pages
-            const productSelectors = [
-                '.product-item',
-                '.product-card',
-                '.product-tile',
-                '.product',
-                '[data-product-id]',
-                '[data-product]',
-                '.grid-item',
-                '.item',
-                '[class*="product"]',
-                // ASICS B2B specific selectors
+            // Enhanced selectors for ASICS B2B
+            const containerSelectors = [
+                'table tbody tr',
                 '.order-item',
+                '.product-row',
                 '.inventory-item',
-                '[class*="order"]',
-                '[class*="inventory"]',
-                'tr[data-product]',
-                'tbody tr',
-                '.product-row'
+                '.line-item',
+                '[data-product]',
+                '[data-sku]',
+                '.product',
+                '.item'
             ];
             
             const nameSelectors = [
                 '.product-name',
-                '.product-title',
-                '.name',
-                '.title',
-                'h1', 'h2', 'h3', 'h4',
-                '[class*="name"]',
-                '[class*="title"]',
-                // ASICS specific
                 '.item-name',
-                '.model-name',
-                '[data-product-name]'
-            ];
-            
-            const priceSelectors = [
-                '.price',
-                '.product-price',
-                '.cost',
-                '.amount',
-                '.msrp',
-                '[class*="price"]',
-                '[class*="cost"]',
-                // ASICS specific
-                '.unit-price',
-                '.wholesale-price',
-                '[data-price]'
-            ];
-            
-            const skuSelectors = [
-                '.sku',
-                '.product-id',
-                '.style-number',
-                '[data-sku]',
-                '[data-product-id]',
-                '[class*="sku"]',
-                // ASICS specific
-                '.model-number',
-                '.style-code',
-                '[data-model]'
-            ];
-            
-            // Inventory-specific selectors
-            const quantitySelectors = [
-                '.quantity',
-                '.stock',
-                '.available',
-                '.inventory',
-                '[class*="quantity"]',
-                '[class*="stock"]',
-                '[class*="available"]',
-                '[data-quantity]',
-                'input[type="number"]'
-            ];
-            
-            const colorSelectors = [
-                '.color',
-                '.colorway',
-                '[class*="color"]',
-                '[data-color]',
-                '.variant'
-            ];
-            
-            const sizeSelectors = [
-                '.size',
-                '[class*="size"]',
-                '[data-size]',
-                '.dimension'
-            ];
-            
-            // Try each product selector
-            let productElements = [];
-            for (const selector of productSelectors) {
-                const elements = document.querySelectorAll(selector);
-                debugInfo.push('Selector "' + selector + '": ' + elements.length + ' elements');
-                if (elements.length > 0 && productElements.length === 0) {
-                    productElements = Array.from(elements);
-                    debugInfo.push('Using selector: ' + selector);
-                    break;
-                }
-            }
-            
-            debugInfo.push('Total product elements found: ' + productElements.length);
-            
-            // If no product containers found, try to extract from the entire page
-            if (productElements.length === 0) {
-                debugInfo.push('No product containers found, analyzing entire page');
-                
-                // Look for inventory tables or forms
-                const tables = document.querySelectorAll('table');
-                const forms = document.querySelectorAll('form');
-                
-                debugInfo.push('Tables found: ' + tables.length);
-                debugInfo.push('Forms found: ' + forms.length);
-                
-                // Try to extract from table rows
-                const rows = document.querySelectorAll('tr');
-                if (rows.length > 1) {
-                    productElements = Array.from(rows).slice(1); // Skip header row
-                    debugInfo.push('Using table rows: ' + productElements.length);
-                }
-            }
-            
-            // Extract data from each product element
-            productElements.forEach((element, index) => {
-                try {
-                    let name = '';
-                    let price = '';
-                    let sku = '';
-                    let quantity = '';
-                    let color = '';
-                    let size = '';
-                    
-                    // Try to find name
-                    for (const selector of nameSelectors) {
-                        const nameEl = element.querySelector(selector);
-                        if (nameEl && nameEl.textContent?.trim()) {
-                            name = nameEl.textContent.trim();
-                            break;
-                        }
-                    }
-                    
-                    // Try to find price
-                    for (const selector of priceSelectors) {
-                        const priceEl = element.querySelector(selector);
-                        if (priceEl && priceEl.textContent?.trim()) {
-                            price = priceEl.textContent.trim();
-                            break;
-                        }
-                    }
-                    
-                    // Try to find SKU
-                    for (const selector of skuSelectors) {
-                        const skuEl = element.querySelector(selector);
-                        if (skuEl && skuEl.textContent?.trim()) {
-                            sku = skuEl.textContent.trim();
-                            break;
-                        } else if (skuEl && skuEl.getAttribute && skuEl.getAttribute('data-sku')) {
-                            sku = skuEl.getAttribute('data-sku');
-                            break;
-                        }
-                    }
-                    
-                    // Try to find quantity/inventory
-                    for (const selector of quantitySelectors) {
-                        const qtyEl = element.querySelector(selector);
-                        if (qtyEl) {
-                            if (qtyEl.value) {
-                                quantity = qtyEl.value;
-                            } else if (qtyEl.textContent?.trim()) {
-                                quantity = qtyEl.textContent.trim();
-                            }
-                            if (quantity) break;
-                        }
-                    }
-                    
-                    // Try to find color
-                    for (const selector of colorSelectors) {
-                        const colorEl = element.querySelector(selector);
-                        if (colorEl && colorEl.textContent?.trim()) {
-                            color = colorEl.textContent.trim();
-                            break;
-                        }
-                    }
-                    
-                    // Try to find size
-                    for (const selector of sizeSelectors) {
-                        const sizeEl = element.querySelector(selector);
-                        if (sizeEl && sizeEl.textContent?.trim()) {
-                            size = sizeEl.textContent.trim();
-                            break;
-                        }
-                    }
-                    
-                    // Get additional data
-                    const imageUrl = element.querySelector('img')?.src || '';
-                    const link = element.querySelector('a')?.href || '';
-                    
-                    // Extract any text that might contain inventory info
-                    const fullText = element.textContent || '';
-                    const inventoryKeywords = ['available', 'stock', 'inventory', 'qty', 'quantity', 'units'];
-                    const hasInventoryText = inventoryKeywords.some(keyword => 
-                        fullText.toLowerCase().includes(keyword)
-                    );
-                    
-                    if (name || sku || price || quantity || hasInventoryText) {
-                        products.push({
-                            name: name || 'Product ' + (index + 1),
-                            price: price || 'Price not available',
-                            sku: sku || 'product-' + index,
-                            quantity: quantity || 'Quantity not found',
-                            color: color || '',
-                            size: size || '',
-                            imageUrl,
-                            link,
-                            inventoryData: hasInventoryText ? fullText.slice(0, 200) : '',
-                            extractedAt: new Date().toISOString()
-                        });
-                        
-                        debugInfo.push('Product ' + (index + 1) + ': name="' + name + '" sku="' + sku + '" price="' + price + '" qty="' + quantity + '"');
-                    }
-                } catch (productError) {
-                    debugInfo.push('Error processing product ' + index + ': ' + productError.message);
-                }
-            });
-            
-            // If still no products found, try page-level extraction with inventory focus
-            if (products.length === 0) {
-                debugInfo.push('No products found with standard selectors, trying page-level inventory extraction');
-                
-                const pageTitle = document.title;
-                const bodyText = document.body ? document.body.innerText : '';
-                const url = window.location.href;
-                
-                // Extract SKU from URL if present
-                const skuMatch = url.match(/\/products\/([A-Z0-9]+)/i);
-                const colorMatch = url.match(/colorCode=([^&]+)/i);
-                
-                if (skuMatch || pageTitle.includes('Product') || bodyText.includes('inventory')) {
-                    products.push({
-                        name: pageTitle || 'Order Page Product',
-                        price: 'See order details',
-                        sku: skuMatch ? skuMatch[1] : 'extracted-from-url',
-                        quantity: 'Check page for inventory',
-                        color: colorMatch ? colorMatch[1] : '',
-                        size: '',
-                        imageUrl: '',
-                        link: url,
-                        inventoryData: bodyText.slice(0, 500),
-                        extractedAt: new Date().toISOString()
-                    });
-                    debugInfo.push('Added page-level product with URL extraction');
-                }
-            }
-            
-            // Store debug info in global for access
-            window.extractionDebugInfo = debugInfo;
-            
-            return products;
-        });
-    }
-
-    async startScraping() {
-        const startTime = Date.now();
-        const batchId = 'clean_' + Date.now();
-        
-        this.addDebugLog('Starting clean scraping session', { 
-            urlCount: this.urlsToMonitor.length,
-            batchId 
-        });
-        
-        try {
-            const results = [];
-            
-            for (let i = 0; i < this.urlsToMonitor.length; i++) {
-                const url = this.urlsToMonitor[i];
-                
-                try {
-                    this.addDebugLog('Scraping URL ' + (i + 1) + '/' + this.urlsToMonitor.length, { url });
-                    
-                    // Rate limit between requests
-                    if (i > 0) {
-                        await this.rateLimitedBrowserlessRequest();
-                    }
-                    
-                    const result = await this.debugSinglePage(url);
-                    
-                    const scrapingResult = {
-                        url,
-                        status: 'success',
-                        products: result.products,
-                        productCount: result.products.length,
-                        timestamp: new Date(),
-                        batchId,
-                        analysis: result.analysis
-                    };
-                    
-                    results.push(scrapingResult);
-                    this.scrapingLogs.unshift(scrapingResult);
-                    
-                    this.addDebugLog('Scraped ' + result.products.length + ' products from ' + url);
-                    
-                    // Update progress
-                    this.scrapingProgress.completed = i + 1;
-                    
-                } catch (urlError) {
-                    this.addDebugLog('Failed to scrape ' + url, { error: urlError.message });
-                    
-                    const errorResult = {
-                        url,
-                        status: 'error',
-                        error: urlError.message,
-                        productCount: 0,
-                        timestamp: new Date(),
-                        batchId
-                    };
-                    
-                    results.push(errorResult);
-                    this.scrapingLogs.unshift(errorResult);
-                    this.scrapingProgress.completed = i + 1;
-                }
-            }
-            
-            // Save results
-            await this.saveResults(results);
-            
-            this.scrapingProgress.active = false;
-            
-            const duration = Math.round((Date.now() - startTime) / 1000);
-            this.addDebugLog('Scraping session completed', { 
-                duration: duration + 's',
-                totalResults: results.length,
-                successCount: results.filter(r => r.status === 'success').length
-            });
-            
-        } catch (error) {
-            this.addDebugLog('Scraping session failed', { error: error.message });
-            this.scrapingProgress.active = false;
-        }
-    }
-
-    async saveResults(results) {
-        if (!this.databaseEnabled || !this.pool) {
-            this.addDebugLog('Results saved to memory only (no database)');
-            return;
-        }
-
-        try {
-            this.addDebugLog('Saving results to database', { count: results.length });
-            
-            for (const result of results) {
-                try {
-                    await this.pool.query(
-                        'INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-                        [
-                            result.batchId,
-                            result.url,
-                            result.status,
-                            result.productCount,
-                            result.error || null,
-                            result.timestamp
-                        ]
-                    );
-                } catch (dbError) {
-                    if (dbError.message.includes('column') && dbError.message.includes('does not exist')) {
-                        this.addDebugLog('Database schema issue - updating table');
-                        await this.updateDatabaseSchema();
-                        // Retry the insert
-                        await this.pool.query(
-                            'INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-                            [
-                                result.batchId,
-                                result.url,
-                                result.status,
-                                result.productCount,
-                                result.error || null,
-                                result.timestamp
-                            ]
-                        );
-                    } else {
-                        throw dbError;
-                    }
-                }
-            }
-            
-            this.addDebugLog('Results saved to database successfully', { count: results.length });
-            
-        } catch (error) {
-            this.addDebugLog('Failed to save results to database', { error: error.message });
-        }
-    }
-
-    async updateDatabaseSchema() {
-        try {
-            this.addDebugLog('Updating database schema');
-            
-            // Add missing columns
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS url VARCHAR(1000)');
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS batch_id VARCHAR(255)');
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT \'pending\'');
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS product_count INTEGER DEFAULT 0');
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS error_message TEXT');
-            await this.pool.query('ALTER TABLE scrape_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
-            
-            this.addDebugLog('Database schema updated successfully');
-            
-        } catch (error) {
-            this.addDebugLog('Failed to update database schema', { error: error.message });
-        }
-    }
-
-    async saveUrlsToDatabase() {
-        if (!this.databaseEnabled || !this.pool) return;
-
-        try {
-            await this.pool.query('DELETE FROM monitored_urls');
-            
-            for (const url of this.urlsToMonitor) {
-                await this.pool.query(
-                    'INSERT INTO monitored_urls (url, created_at) VALUES ($1, $2)',
-                    [url, new Date()]
-                );
-            }
-            
-            this.addDebugLog('URLs saved to database', { count: this.urlsToMonitor.length });
-            
-        } catch (error) {
-            this.addDebugLog('Failed to save URLs to database', { error: error.message });
-        }
-    }
-
-    async loadUrlsToMonitor() {
-        if (!this.databaseEnabled || !this.pool) {
-            this.setDefaultUrls();
-            return;
-        }
-
-        try {
-            const result = await this.pool.query('SELECT url FROM monitored_urls ORDER BY created_at DESC');
-            
-            if (result.rows.length > 0) {
-                this.urlsToMonitor = result.rows.map(row => row.url);
-                this.addDebugLog('URLs loaded from database', { count: this.urlsToMonitor.length });
-            } else {
-                this.setDefaultUrls();
-                this.addDebugLog('No URLs in database, using defaults');
-            }
-            
-        } catch (error) {
-            this.addDebugLog('Failed to load URLs from database', { error: error.message });
-            this.setDefaultUrls();
-        }
-    }
-
-    async initializeDatabase() {
-        if (!this.databaseEnabled || !this.pool) {
-            this.addDebugLog('Running in memory-only mode');
-            return;
-        }
-
-        try {
-            this.addDebugLog('Initializing database');
-            await this.pool.query('SELECT NOW()');
-            this.addDebugLog('Database connection successful');
-            
-            // Create tables with all necessary columns
-            await this.pool.query(
-                'CREATE TABLE IF NOT EXISTS monitored_urls (id SERIAL PRIMARY KEY, url VARCHAR(1000) NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'
-            );
-            
-            await this.pool.query(
-                'CREATE TABLE IF NOT EXISTS scrape_logs (id SERIAL PRIMARY KEY, url VARCHAR(1000), status VARCHAR(50) DEFAULT \'pending\', product_count INTEGER DEFAULT 0, error_message TEXT, batch_id VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'
-            );
-
-            this.addDebugLog('Database initialization completed');
-            
-        } catch (error) {
-            this.addDebugLog('Database initialization failed', { error: error.message });
-            this.databaseEnabled = false;
-            throw error;
-        }
-    }
-
-    async delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async start() {
-        try {
-            this.addDebugLog('Starting Clean Debug ASICS Scraper');
-            
-            this.app.listen(this.port, () => {
-                console.log('🐛 Clean Debug Scraper running on port ' + this.port);
-                console.log('📊 Dashboard available at /dashboard');
-                console.log('🎯 Ready for extensive debugging!');
-                this.addDebugLog('Server started successfully', { port: this.port });
-            });
-            
-        } catch (error) {
-            this.addDebugLog('Failed to start scraper', { error: error.message });
-            console.error('❌ Failed to start scraper:', error);
-            process.exit(1);
-        }
-    }
-}
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-    console.log('🛑 Received SIGINT, shutting down gracefully...');
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    console.log('🛑 Received SIGTERM, shutting down gracefully...');
-    process.exit(0);
-});
-
-const scraper = new CleanDebugScraper();
-scraper.start().catch(error => {
-    console.error('❌ Startup failed:', error);
-    process.exit(1);
-});
+                '.name',
+                '.description',
+                't
