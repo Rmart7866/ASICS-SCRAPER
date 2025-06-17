@@ -119,13 +119,21 @@ async function exportDebugLogs() {
 
         async function testWorkingUrls() {
             const testUrls = [
+                'https://b2b.asics.com/',
+                'https://b2b.asics.com/us',
                 'https://b2b.asics.com/us/en-us',
-                'https://b2b.asics.com/us/en-us/mens-running-shoes',
-                'https://b2b.asics.com/us/en-us/womens-running-shoes'
+                'https://b2b.asics.com/us/en-us/products',
+                'https://b2b.asics.com/us/en-us/catalog',
+                'https://b2b.asics.com/us/en-us/orders',
+                'https://b2b.asics.com/dashboard',
+                'https://b2b.asics.com/products'
             ];
+            
+            const results = [];
             
             for (let url of testUrls) {
                 console.log('Testing URL: ' + url);
+                
                 try {
                     const response = await fetch('/api/debug-page', {
                         method: 'POST',
@@ -135,16 +143,65 @@ async function exportDebugLogs() {
                     
                     const result = await response.json();
                     console.log('Result for ' + url + ':', result);
+                    
+                    if (result.success) {
+                        results.push({
+                            url: url,
+                            title: result.title || 'Unknown',
+                            productCount: result.productCount || 0,
+                            status: 'Success'
+                        });
+                    } else {
+                        results.push({
+                            url: url,
+                            title: 'Error',
+                            productCount: 0,
+                            status: result.error || 'Failed'
+                        });
+                    }
                 } catch (error) {
                     console.error('Error testing ' + url + ':', error);
+                    results.push({
+                        url: url,
+                        title: 'Network Error',
+                        productCount: 0,
+                        status: error.message
+                    });
                 }
                 
-                // Wait between tests
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Wait between tests to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
             
-            alert('✅ Test completed! Check debug logs for results.');
+            // Show results in a modal
+            showUrlTestResults(results);
             refreshDebugLogs();
+        }
+
+        function showUrlTestResults(results) {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 10%; left: 10%; width: 80%; height: 80%; background: white; border: 2px solid #007bff; padding: 20px; z-index: 10000; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;';
+            
+            let html = '<h3>🧪 URL Test Results</h3><table style="width: 100%; border-collapse: collapse; margin: 20px 0;"><tr style="background: #f0f0f0;"><th style="border: 1px solid #ddd; padding: 8px;">URL</th><th style="border: 1px solid #ddd; padding: 8px;">Page Title</th><th style="border: 1px solid #ddd; padding: 8px;">Products</th><th style="border: 1px solid #ddd; padding: 8px;">Status</th></tr>';
+            
+            results.forEach(result => {
+                const statusColor = result.status === 'Success' ? '#28a745' : '#dc3545';
+                html += '<tr><td style="border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 11px;">' + result.url + '</td><td style="border: 1px solid #ddd; padding: 8px;">' + result.title + '</td><td style="border: 1px solid #ddd; padding: 8px; text-align: center;">' + result.productCount + '</td><td style="border: 1px solid #ddd; padding: 8px; color: ' + statusColor + ';">' + result.status + '</td></tr>';
+            });
+            
+            html += '</table>';
+            
+            // Add instructions
+            html += '<div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4>💡 Next Steps:</h4><ul><li><strong>Look for URLs that return valid page titles</strong> (not "Not Found")</li><li><strong>Try those URLs in your browser first</strong> to confirm they work</li><li><strong>Use working URLs for scraping</strong></li><li><strong>Check your ASICS B2B portal</strong> for the correct URL structure</li></ul></div>';
+            
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Close';
+            closeButton.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
+            closeButton.onclick = function() { modal.remove(); };
+            
+            modal.innerHTML = html;
+            modal.appendChild(closeButton);
+            document.body.appendChild(modal);
         }
 
         function refreshCookies() {
@@ -161,6 +218,78 @@ async function exportDebugLogs() {
                 '<li><strong>Copy the result</strong> and paste it in the Session Cookies field above</li>' +
                 '<li><strong>Click "🍪 Set Session"</strong></li>' +
                 '</ol>';
+            
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Got it!';
+            closeButton.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
+            closeButton.onclick = function() { modal.remove(); };
+            
+            modalContent.appendChild(closeButton);
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+        }
+
+        async function testYourWorkingUrl() {
+            // Test the specific URL that works with the Chrome extension
+            const workingUrl = 'https://b2b.asics.com/orders/100454100/products/1013A142?deliveryDate=2025-06-18';
+            
+            const statusDiv = document.getElementById('scrapingStatus');
+            statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🧪 Testing your working URL: ' + workingUrl + '</div>';
+            
+            try {
+                const response = await fetch('/api/debug-page', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: workingUrl })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Working URL test completed!<br><small>Found ' + result.productCount + ' products. Check debug logs for ASICS inventory data.</small></div>';
+                    
+                    // Also add this URL to the list if it's not already there
+                    document.getElementById('newUrl').value = workingUrl;
+                    
+                    refreshDebugLogs();
+                } else {
+                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Working URL test failed: ' + result.error + '<br><small>This might be a session/authentication issue.</small></div>';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error testing working URL: ' + error.message + '</div>';
+            }
+        }
+
+        function findWorkingUrls() {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 2px solid #007bff; padding: 30px; z-index: 10000; max-width: 80%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
+            
+            const modalContent = document.createElement('div');
+            modalContent.innerHTML = '<h3>🔍 How to Find Working ASICS URLs</h3>' +
+                '<div style="text-align: left; margin: 20px 0;">' +
+                '<h4>Method 1: Use Your Browser</h4>' +
+                '<ol style="margin: 10px 0 10px 20px;">' +
+                '<li>Open ASICS B2B in a new tab and log in</li>' +
+                '<li>Navigate to any product or order page that works</li>' +
+                '<li>Copy the URL from the address bar</li>' +
+                '<li>Make sure the page shows inventory/product data</li>' +
+                '<li>Use that URL in the scraper</li>' +
+                '</ol>' +
+                '<h4>Method 2: Check Your Browser Network Tab</h4>' +
+                '<ol style="margin: 10px 0 10px 20px;">' +
+                '<li>Press F12 → Network tab in ASICS B2B</li>' +
+                '<li>Navigate to a product page</li>' +
+                '<li>Look for API calls that return product data</li>' +
+                '<li>Try those endpoint URLs in the scraper</li>' +
+                '</ol>' +
+                '<h4>Common ASICS B2B URL Patterns:</h4>' +
+                '<ul style="margin: 10px 0 10px 20px; font-family: monospace; font-size: 12px;">' +
+                '<li>https://b2b.asics.com/orders/[ORDER_ID]/products/[PRODUCT_ID]</li>' +
+                '<li>https://b2b.asics.com/catalog/products/[PRODUCT_ID]</li>' +
+                '<li>https://b2b.asics.com/inventory/[PRODUCT_ID]</li>' +
+                '<li>https://b2b.asics.com/dashboard</li>' +
+                '</ul>' +
+                '</div>';
             
             const closeButton = document.createElement('button');
             closeButton.textContent = 'Got it!';
@@ -385,6 +514,7 @@ class CleanDebugScraper {
                     ▶️ Start Scraping
                 </button>
                 <button onclick="debugSinglePage()" class="btn info">🐛 Debug Single Page</button>
+                <button onclick="testYourWorkingUrl()" class="btn success">🧪 Test Your Working URL</button>
                 <button onclick="exportDebugLogs()" class="btn">📋 Export Debug Logs</button>
                 <button onclick="exportResults()" class="btn">📄 Export Results CSV</button>
                 <button onclick="viewAllResults()" class="btn">👁️ View All Results</button>
@@ -493,11 +623,25 @@ class CleanDebugScraper {
         }
 
         async function debugSinglePage() {
-            const url = document.getElementById('newUrl').value.trim() || 'https://b2b.asics.com/us/en-us';
+            // Get the URL from the input field, or use the first monitored URL if available
+            let url = document.getElementById('newUrl').value.trim();
+            
+            if (!url) {
+                // If no URL in input, try to get from the URL list
+                const urlListItems = document.querySelectorAll('.url-item .url-text');
+                if (urlListItems.length > 0) {
+                    url = urlListItems[0].textContent.trim();
+                    document.getElementById('newUrl').value = url;
+                } else {
+                    alert('❌ Please enter a URL to debug, or add URLs to the URL list first.');
+                    return;
+                }
+            }
+            
             const statusDiv = document.getElementById('scrapingStatus');
             
             try {
-                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🐛 Debugging single page...</div>';
+                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🐛 Debugging: ' + url + '</div>';
                 
                 const response = await fetch('/api/debug-page', {
                     method: 'POST',
@@ -508,13 +652,13 @@ class CleanDebugScraper {
                 const result = await response.json();
                 
                 if (result.success) {
-                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Debug completed<br><small>Found ' + result.productCount + ' products. Check debug logs for details.</small></div>';
+                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Debug completed for: ' + url + '<br><small>Found ' + result.productCount + ' products. Check debug logs for details.</small></div>';
                     refreshDebugLogs();
                 } else {
-                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Debug failed: ' + result.error + '</div>';
+                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Debug failed for: ' + url + '<br><small>' + result.error + '</small></div>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error: ' + error.message + '</div>';
+                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error debugging: ' + url + '<br><small>' + error.message + '</small></div>';
             }
         }
 
