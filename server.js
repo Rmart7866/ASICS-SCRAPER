@@ -3,14 +3,23 @@ async function exportDebugLogs() {
                 const response = await fetch('/api/debug-logs');
                 const logs = await response.json();
                 
-                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'asics-scraper-debug-logs.json';
-                a.click();
-                URL.revokeObjectURL(url);
+                if (logs && logs.length > 0) {
+                    const jsonContent = JSON.stringify(logs, null, 2);
+                    const blob = new Blob([jsonContent], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'asics-scraper-debug-logs-' + new Date().toISOString().split('T')[0] + '.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    alert('✅ Debug logs exported!');
+                } else {
+                    alert('❌ No debug logs to export');
+                }
             } catch (error) {
+                console.error('Export error:', error);
                 alert('Error exporting logs: ' + error.message);
             }
         }
@@ -106,6 +115,43 @@ async function exportDebugLogs() {
             });
             
             return csv;
+        }
+
+        async function testWorkingUrls() {
+            const testUrls = [
+                'https://b2b.asics.com/us/en-us',
+                'https://b2b.asics.com/us/en-us/mens-running-shoes',
+                'https://b2b.asics.com/us/en-us/womens-running-shoes'
+            ];
+            
+            for (let url of testUrls) {
+                console.log('Testing URL: ' + url);
+                try {
+                    const response = await fetch('/api/debug-page', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url })
+                    });
+                    
+                    const result = await response.json();
+                    console.log('Result for ' + url + ':', result);
+                } catch (error) {
+                    console.error('Error testing ' + url + ':', error);
+                }
+                
+                // Wait between tests
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            
+            alert('✅ Test completed! Check debug logs for results.');
+            refreshDebugLogs();
+        }
+
+        function refreshCookies() {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 2px solid #007bff; padding: 30px; z-index: 10000; max-width: 80%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
+            modal.innerHTML = '<h3>🔄 How to Get Fresh Session Cookies</h3><ol style="text-align: left; margin: 20px 0;"><li><strong>Open ASICS B2B</strong> in a new tab: <a href="https://b2b.asics.com" target="_blank">https://b2b.asics.com</a></li><li><strong>Log in completely</strong> and navigate to any product page</li><li><strong>Press F12</strong> → Console tab</li><li><strong>Paste this code:</strong><br><code style="background: #f0f0f0; padding: 5px; display: block; margin: 5px 0;">document.cookie.split(\\';\\').map(c => c.trim()).join(\\'; \\')</code></li><li><strong>Copy the result</strong> and paste it in the Session Cookies field above</li><li><strong>Click "🍪 Set Session"</strong></li></ol><button onclick="this.parentElement.remove()" style="margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px;">Got it!</button>';
+            document.body.appendChild(modal);
         }const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
@@ -1095,23 +1141,115 @@ class CleanDebugScraper {
             
             await this.rateLimitedBrowserlessRequest();
             
+            this.addDebugLog('Connecting to browser for page debug');
             const browser = await puppeteer.connect({
                 browserWSEndpoint: this.browserlessEndpoint,
                 ignoreHTTPSErrors: true
             });
             
+            this.addDebugLog('Creating new page for debugging');
             const page = await browser.newPage();
+            
+            // Set shorter timeout and add more detailed error handling
+            page.setDefaultTimeout(20000); // 20 second timeout
+            
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
             // Set session cookies
-            await page.setCookie(...this.sessionCookies);
+            this.addDebugLog('Setting session cookies for page debug');
+            try {
+                await page.setCookie(...this.sessionCookies);
+                this.addDebugLog('Cookies set successfully for page debug');
+            } catch (cookieError) {
+                this.addDebugLog('Error setting cookies', { error: cookieError.message });
+            }
+            
             this.addDebugLog('Navigating to debug URL', { url });
             
-            // Navigate to URL
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            // Navigate to URL with better error handling
+            try {
+                const response = await page.goto(url, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 25000 
+                });
+                
+                this.addDebugLog('Page navigation completed', { 
+                    status: response ? response.status() : 'unknown',
+                    url: page.url()
+                });
+                
+                // Check if we got redirected to login or region selection
+                const currentUrl = page.url();
+                if (currentUrl.includes('login') || currentUrl.includes('authentication')) {
+                    this.addDebugLog('Redirected to login - session may be expired', { 
+                        originalUrl: url,
+                        redirectedUrl: currentUrl 
+                    });
+                    
+                    // Try to handle region selection if present
+                    const regionUSA = await page.$('text=United States');
+                    if (regionUSA) {
+                        this.addDebugLog('Found region selection, clicking United States');
+                        await regionUSA.click();
+                        await page.waitForTimeout(2000);
+                        
+                        // Try to navigate to original URL again
+                        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+                        this.addDebugLog('Retried navigation after region selection', { url: page.url() });
+                    }
+                }
+                
+                // Check if we're on a "Not Found" page
+                const pageTitle = await page.title();
+                if (pageTitle.includes('Not Found')) {
+                    this.addDebugLog('Page not found - URL may be invalid or session expired', {
+                        url: page.url(),
+                        title: pageTitle
+                    });
+                }
+                
+            } catch (navigationError) {
+                this.addDebugLog('Navigation error', { 
+                    error: navigationError.message,
+                    url: url
+                });
+                
+                // Try to get current page info even if navigation failed
+                try {
+                    const currentUrl = await page.url();
+                    const pageTitle = await page.title();
+                    this.addDebugLog('Page state after navigation error', {
+                        currentUrl,
+                        pageTitle
+                    });
+                } catch (stateError) {
+                    this.addDebugLog('Could not get page state', { error: stateError.message });
+                }
+                
+                await browser.close();
+                throw navigationError;
+            }
+            
+            // Wait for page to load
+            this.addDebugLog('Waiting for page to stabilize');
             await page.waitForTimeout(3000);
             
+            // Get basic page info first
+            this.addDebugLog('Getting basic page information');
+            const basicPageInfo = await page.evaluate(() => {
+                return {
+                    url: window.location.href,
+                    title: document.title,
+                    bodyLength: document.body ? document.body.innerText.length : 0,
+                    hasBody: !!document.body,
+                    readyState: document.readyState
+                };
+            });
+            
+            this.addDebugLog('Basic page info retrieved', basicPageInfo);
+            
             // Analyze page structure
+            this.addDebugLog('Starting page structure analysis');
             const pageAnalysis = await page.evaluate(() => {
                 const url = window.location.href;
                 const title = document.title;
@@ -1120,29 +1258,37 @@ class CleanDebugScraper {
                 // Count different element types
                 const elementCounts = {
                     divs: document.querySelectorAll('div').length,
+                    spans: document.querySelectorAll('span').length,
                     products: document.querySelectorAll('[class*="product"], [data-product]').length,
                     images: document.querySelectorAll('img').length,
                     links: document.querySelectorAll('a').length,
-                    forms: document.querySelectorAll('form').length
+                    forms: document.querySelectorAll('form').length,
+                    grids: document.querySelectorAll('[class*="grid"]').length
                 };
                 
-                // Look for product-related classes
-                const productClasses = [];
-                document.querySelectorAll('[class*="product"]').forEach(el => {
-                    if (el.className) productClasses.push(el.className);
-                });
+                // Look for ASICS-specific elements
+                const asicsElements = {
+                    colorElements: document.querySelectorAll('li div.flex.items-center.gap-2').length,
+                    sizeElements: document.querySelectorAll('.bg-primary.text-white').length,
+                    quantityRows: document.querySelectorAll('.grid.grid-flow-col.items-center').length
+                };
                 
-                // Look for price-related elements
-                const priceElements = document.querySelectorAll('[class*="price"], [class*="cost"], [class*="amount"]');
-                const priceTexts = Array.from(priceElements).map(el => el.textContent?.trim()).filter(t => t);
+                // Look for any text that might contain color codes or quantities
+                const textPatterns = {
+                    colorCodes: (bodyText.match(/\b\d{3}\b/g) || []).slice(0, 10),
+                    quantities: (bodyText.match(/\b\d+\+?\b/g) || []).slice(0, 20),
+                    hasOrderText: bodyText.toLowerCase().includes('order'),
+                    hasProductText: bodyText.toLowerCase().includes('product'),
+                    hasInventoryText: bodyText.toLowerCase().includes('inventory')
+                };
                 
                 return {
                     url,
                     title,
                     bodyLength: bodyText.length,
                     elementCounts,
-                    productClasses: [...new Set(productClasses)].slice(0, 10),
-                    priceTexts: priceTexts.slice(0, 5),
+                    asicsElements,
+                    textPatterns,
                     hasLoginRedirect: url.includes('login') || url.includes('authentication'),
                     bodyPreview: bodyText.slice(0, 500)
                 };
@@ -1151,9 +1297,12 @@ class CleanDebugScraper {
             this.addDebugLog('Page analysis completed', pageAnalysis);
             
             // Extract products using enhanced selectors
+            this.addDebugLog('Starting product extraction');
             const products = await this.extractProductsWithDebugging(page);
+            this.addDebugLog('Product extraction completed', { productCount: products.length });
             
             await browser.close();
+            this.addDebugLog('Browser closed successfully');
             
             this.addDebugLog('Debug single page completed', { 
                 productCount: products.length,
@@ -1168,7 +1317,11 @@ class CleanDebugScraper {
             };
             
         } catch (error) {
-            this.addDebugLog('Debug single page error', { url, error: error.message });
+            this.addDebugLog('Debug single page error', { 
+                url, 
+                error: error.message, 
+                stack: error.stack 
+            });
             throw error;
         }
     }
