@@ -150,7 +150,25 @@ async function exportDebugLogs() {
         function refreshCookies() {
             const modal = document.createElement('div');
             modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 2px solid #007bff; padding: 30px; z-index: 10000; max-width: 80%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
-            modal.innerHTML = '<h3>🔄 How to Get Fresh Session Cookies</h3><ol style="text-align: left; margin: 20px 0;"><li><strong>Open ASICS B2B</strong> in a new tab: <a href="https://b2b.asics.com" target="_blank">https://b2b.asics.com</a></li><li><strong>Log in completely</strong> and navigate to any product page</li><li><strong>Press F12</strong> → Console tab</li><li><strong>Paste this code:</strong><br><code style="background: #f0f0f0; padding: 5px; display: block; margin: 5px 0;">document.cookie.split(\\';\\').map(c => c.trim()).join(\\'; \\')</code></li><li><strong>Copy the result</strong> and paste it in the Session Cookies field above</li><li><strong>Click "🍪 Set Session"</strong></li></ol><button onclick="this.parentElement.remove()" style="margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px;">Got it!</button>';
+            
+            const modalContent = document.createElement('div');
+            modalContent.innerHTML = '<h3>🔄 How to Get Fresh Session Cookies</h3>' +
+                '<ol style="text-align: left; margin: 20px 0;">' +
+                '<li><strong>Open ASICS B2B</strong> in a new tab: <a href="https://b2b.asics.com" target="_blank">https://b2b.asics.com</a></li>' +
+                '<li><strong>Log in completely</strong> and navigate to any product page</li>' +
+                '<li><strong>Press F12</strong> → Console tab</li>' +
+                '<li><strong>Paste this code:</strong><br><code style="background: #f0f0f0; padding: 5px; display: block; margin: 5px 0;">document.cookie.split(";").map(c => c.trim()).join("; ")</code></li>' +
+                '<li><strong>Copy the result</strong> and paste it in the Session Cookies field above</li>' +
+                '<li><strong>Click "🍪 Set Session"</strong></li>' +
+                '</ol>';
+            
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Got it!';
+            closeButton.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
+            closeButton.onclick = function() { modal.remove(); };
+            
+            modalContent.appendChild(closeButton);
+            modal.appendChild(modalContent);
             document.body.appendChild(modal);
         }const express = require('express');
 const puppeteer = require('puppeteer-core');
