@@ -90,31 +90,31 @@ class EnhancedASICSScraper {
         // Health check
         this.app.get('/', (req, res) => {
             res.json({
-                status: 'Enhanced ASICS B2B Scraper Active',
-                version: '3.0-stealth',
+                status: 'Enhanced ASICS B2B Scraper Active - Vue.js Ready',
+                version: '3.1-vue-js-master',
                 uptime: process.uptime(),
                 urlCount: this.urlsToMonitor.length,
                 sessionValid: this.sessionValid,
                 cookieCount: this.sessionCookies.length,
                 hasSessionStorage: Object.keys(this.sessionStorage).length > 0,
                 hasLocalStorage: Object.keys(this.localStorage).length > 0,
-                enhancement: 'browser-fingerprint-bypass'
+                enhancement: 'vue-js-dynamic-content-handling'
             });
         });
 
-        // Enhanced dashboard with new features
+        // Enhanced dashboard with Vue.js features
         this.app.get('/dashboard', (req, res) => {
             res.send(this.generateEnhancedDashboard());
         });
 
         // Enhanced API Routes
         
-        // NEW: Complete session import (cookies + storage + fingerprint)
+        // Complete session import (cookies + storage + fingerprint)
         this.app.post('/api/import-complete-session', async (req, res) => {
             try {
                 const { cookies, sessionStorage, localStorage, userAgent, sessionData } = req.body;
                 
-                this.addDebugLog('Importing complete session state');
+                this.addDebugLog('Importing complete session state for Vue.js scraping');
                 
                 // Import cookies
                 if (cookies) {
@@ -153,11 +153,12 @@ class EnhancedASICSScraper {
                 
                 res.json({
                     success: true,
-                    message: 'Complete session imported successfully',
+                    message: 'Complete session imported successfully - Vue.js ready',
                     cookieCount: this.sessionCookies.length,
                     storageKeys: Object.keys(this.sessionStorage).length + Object.keys(this.localStorage).length,
                     sessionValid: this.sessionValid,
-                    testResult: testResult.message
+                    testResult: testResult.message,
+                    enhancement: 'vue-js-ready'
                 });
                 
             } catch (error) {
@@ -169,14 +170,14 @@ class EnhancedASICSScraper {
             }
         });
 
-        // NEW: Extract complete session from user's browser
+        // Generate session extractor script
         this.app.get('/api/generate-session-extractor', (req, res) => {
             const extractorScript = `
-// ASICS B2B Complete Session Extractor
+// ASICS B2B Complete Session Extractor - Vue.js Enhanced
 // Run this in your browser console on the ASICS B2B page where you're logged in
 
 (function() {
-    console.log('🚀 Starting ASICS B2B Session Extraction...');
+    console.log('🚀 Starting ASICS B2B Vue.js Session Extraction...');
     
     // Extract cookies
     const cookies = document.cookie;
@@ -204,6 +205,16 @@ class EnhancedASICSScraper {
     const userAgent = navigator.userAgent;
     console.log('✅ Extracted userAgent:', userAgent);
     
+    // Extract Vue.js specific data
+    const vueData = {
+        hasVue: !!window.Vue,
+        vueElements: document.querySelectorAll('[data-v-]').length,
+        hasAsicsGrid: !!document.querySelector('.grid.grid-flow-col'),
+        hasInventoryData: /\\d+\\+?/.test(document.body.innerText),
+        hasColorData: /\\d{3}\\s*-\\s*\\w+/.test(document.body.innerText)
+    };
+    console.log('✅ Extracted Vue.js data:', vueData);
+    
     // Extract additional browser fingerprint data
     const sessionData = {
         url: window.location.href,
@@ -223,7 +234,8 @@ class EnhancedASICSScraper {
         languages: navigator.languages,
         platform: navigator.platform,
         cookieEnabled: navigator.cookieEnabled,
-        onLine: navigator.onLine
+        onLine: navigator.onLine,
+        vueApp: vueData
     };
     console.log('✅ Extracted session fingerprint data');
     
@@ -236,7 +248,7 @@ class EnhancedASICSScraper {
         sessionData
     };
     
-    console.log('🎉 Complete session extraction finished!');
+    console.log('🎉 Vue.js-enhanced session extraction finished!');
     console.log('📋 Copy this JSON and paste it into the scraper dashboard:');
     console.log('---START COPY FROM HERE---');
     console.log(JSON.stringify(completeSession, null, 2));
@@ -254,17 +266,17 @@ class EnhancedASICSScraper {
             `;
             
             res.setHeader('Content-Type', 'text/javascript');
-            res.setHeader('Content-Disposition', 'attachment; filename="asics-session-extractor.js"');
+            res.setHeader('Content-Disposition', 'attachment; filename="asics-vue-session-extractor.js"');
             res.send(extractorScript);
         });
 
-        // Enhanced session testing with complete browser state
+        // Enhanced session testing with Vue.js awareness
         this.app.post('/api/test-complete-session', async (req, res) => {
             try {
                 const { url } = req.body;
                 const testUrl = url || 'https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18';
                 
-                this.addDebugLog('Testing complete session with enhanced browser setup', { testUrl });
+                this.addDebugLog('Testing complete session with Vue.js dynamic content handling', { testUrl });
                 
                 await this.rateLimitedBrowserlessRequest();
                 
@@ -276,11 +288,11 @@ class EnhancedASICSScraper {
                     message: result.message,
                     details: result.details,
                     sessionValid: this.sessionValid,
-                    enhancement: 'complete-session-test'
+                    enhancement: 'vue-js-session-test'
                 });
                 
             } catch (error) {
-                this.addDebugLog('Complete session test error', { error: error.message });
+                this.addDebugLog('Vue.js session test error', { error: error.message });
                 res.json({
                     success: false,
                     error: 'Session test failed: ' + error.message
@@ -288,7 +300,7 @@ class EnhancedASICSScraper {
             }
         });
 
-        // Enhanced scraping with stealth mode
+        // Enhanced scraping with Vue.js dynamic content handling
         this.app.post('/api/start-enhanced-scraping', async (req, res) => {
             try {
                 if (!this.sessionValid || this.sessionCookies.length === 0) {
@@ -298,7 +310,7 @@ class EnhancedASICSScraper {
                     });
                 }
                 
-                this.addDebugLog('Starting enhanced stealth scraping');
+                this.addDebugLog('Starting Vue.js-aware enhanced scraping');
                 
                 this.scrapingProgress = {
                     active: true,
@@ -307,17 +319,17 @@ class EnhancedASICSScraper {
                     results: []
                 };
                 
-                setTimeout(() => this.startEnhancedStealthScraping(), 1000);
+                setTimeout(() => this.startEnhancedVueJSScraping(), 1000);
                 
                 res.json({
                     success: true,
-                    message: 'Enhanced stealth scraping started',
+                    message: 'Vue.js-enhanced scraping started',
                     urlCount: this.urlsToMonitor.length,
-                    enhancement: 'stealth-mode'
+                    enhancement: 'vue-js-dynamic-content'
                 });
                 
             } catch (error) {
-                this.addDebugLog('Error starting enhanced scraping', { error: error.message });
+                this.addDebugLog('Error starting Vue.js scraping', { error: error.message });
                 res.json({ success: false, error: error.message });
             }
         });
@@ -340,7 +352,7 @@ class EnhancedASICSScraper {
                 }
                 
                 this.urlsToMonitor.push(url);
-                this.addDebugLog('URL added', { url });
+                this.addDebugLog('URL added for Vue.js scraping', { url });
                 res.json({ success: true });
                 
             } catch (error) {
@@ -406,7 +418,7 @@ class EnhancedASICSScraper {
                     products: allProducts,
                     totalProducts: allProducts.length,
                     exportedAt: new Date().toISOString(),
-                    enhancement: 'stealth-extracted'
+                    enhancement: 'vue-js-extracted'
                 });
                 
             } catch (error) {
@@ -436,12 +448,12 @@ class EnhancedASICSScraper {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced ASICS B2B Scraper v3.0 - Stealth Mode</title>
+    <title>ASICS B2B Scraper v3.1 - Vue.js Master Edition</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; }
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .header { background: linear-gradient(135deg, #00ff87 0%, #60efff 100%); color: #000; padding: 30px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 15px rgba(0,255,135,0.3); }
         .card { background: white; padding: 25px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
         .warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
@@ -465,17 +477,17 @@ class EnhancedASICSScraper {
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
         @media (max-width: 768px) { .grid, .grid-3 { grid-template-columns: 1fr; } }
         .code { background: #f8f9fa; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; margin: 10px 0; border: 1px solid #dee2e6; }
-        .stealth-feature { border: 2px solid #28a745 !important; position: relative; }
-        .stealth-feature::before { content: "🥷 STEALTH"; position: absolute; top: -10px; right: 10px; background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .vue-feature { border: 2px solid #00ff87 !important; position: relative; }
+        .vue-feature::before { content: "⚡ VUE.JS"; position: absolute; top: -10px; right: 10px; background: #00ff87; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
         .pulse { animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); } 100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); } }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 135, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 135, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 135, 0); } }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🥷 Enhanced ASICS B2B Scraper v3.0</h1>
-            <p>Stealth Mode • Complete Session Management • Fingerprint Bypass</p>
+            <h1>⚡ ASICS B2B Scraper v3.1 - Vue.js Master</h1>
+            <p>Dynamic Content Extraction • Inventory Matrix Decoding • Vue.js Framework Bypass</p>
             <div style="margin-top: 15px;">
                 <span class="btn ${sessionStatusClass}" style="cursor: default;">
                     ${sessionStatusText}
@@ -493,24 +505,24 @@ class EnhancedASICSScraper {
         </div>
 
         <div class="grid-3">
-            <div class="card stealth-feature pulse">
-                <h3>🎯 Complete Session Import</h3>
+            <div class="card vue-feature pulse">
+                <h3>🎯 Vue.js Session Import</h3>
                 <div class="input-group">
                     <label for="completeSession">Complete Session JSON:</label>
-                    <textarea id="completeSession" rows="8" placeholder="Paste the complete session JSON from browser extraction..."></textarea>
+                    <textarea id="completeSession" rows="8" placeholder="Paste the complete Vue.js session JSON from browser extraction..."></textarea>
                 </div>
-                <button onclick="importCompleteSession()" class="btn success large">🚀 Import Complete Session</button>
-                <button onclick="downloadExtractor()" class="btn warning">📥 Download Session Extractor</button>
+                <button onclick="importCompleteSession()" class="btn success large">⚡ Import Vue.js Session</button>
+                <button onclick="downloadExtractor()" class="btn warning">📥 Download Vue.js Extractor</button>
                 <div id="sessionResult" style="margin-top: 10px;"></div>
             </div>
 
-            <div class="card stealth-feature">
-                <h3>🔗 Enhanced URL Testing</h3>
+            <div class="card vue-feature">
+                <h3>🔗 Dynamic URL Testing</h3>
                 <div class="input-group">
-                    <input type="url" id="newUrl" placeholder="https://b2b.asics.com/orders/...">
+                    <input type="url" id="newUrl" placeholder="https://b2b.asics.com/orders/..." value="https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18">
                 </div>
                 <button onclick="addUrl()" class="btn">➕ Add URL</button>
-                <button onclick="testCompleteSession()" class="btn warning">⚡ Test Complete Session</button>
+                <button onclick="testCompleteSession()" class="btn warning">⚡ Test Vue.js Session</button>
                 
                 <h4 style="margin-top: 15px;">URLs (${this.urlsToMonitor.length}):</h4>
                 <ul id="urlList" class="url-list">
@@ -518,13 +530,13 @@ class EnhancedASICSScraper {
                 </ul>
             </div>
 
-            <div class="card stealth-feature">
-                <h3>🚀 Enhanced Scraping</h3>
+            <div class="card vue-feature">
+                <h3>🚀 Vue.js Enhanced Scraping</h3>
                 <button onclick="startEnhancedScraping()" class="btn success large" ${this.sessionValid ? '' : 'disabled'}>
-                    🥷 Start Stealth Scraping
+                    ⚡ Start Vue.js Scraping
                 </button>
-                <button onclick="exportResults()" class="btn">📄 Export Results CSV</button>
-                <button onclick="viewAllResults()" class="btn">👁️ View All Results</button>
+                <button onclick="exportResults()" class="btn">📄 Export Inventory CSV</button>
+                <button onclick="viewAllResults()" class="btn">👁️ View Inventory Matrix</button>
                 
                 <div id="scrapingStatus" style="margin-top: 15px;"></div>
                 <div id="progressBar" style="margin-top: 10px;"></div>
@@ -536,49 +548,52 @@ class EnhancedASICSScraper {
                 <h3>📊 Scraping Logs</h3>
                 <button onclick="refreshLogs()" class="btn">🔄 Refresh</button>
                 <div id="logs" class="logs">
-                    Click refresh to load recent activity...
+                    Click refresh to load Vue.js scraping activity...
                 </div>
             </div>
 
             <div class="card">
-                <h3>🐛 Debug Logs</h3>
+                <h3>🐛 Vue.js Debug Logs</h3>
                 <button onclick="refreshDebugLogs()" class="btn">🔄 Refresh Debug</button>
                 <button onclick="clearDebugLogs()" class="btn danger">🗑️ Clear Debug</button>
                 <div id="debugLogs" class="debug-logs">
-                    Click refresh to load debug information...
+                    Click refresh to load Vue.js debug information...
                 </div>
             </div>
         </div>
 
-        <div class="card info stealth-feature">
-            <h3>🥷 Complete Session Extraction Guide</h3>
-            <p><strong>For maximum stealth and authentication bypass:</strong></p>
+        <div class="card info vue-feature">
+            <h3>⚡ Vue.js Dynamic Content Extraction Guide</h3>
+            <p><strong>Now with enhanced Vue.js framework handling for ASICS B2B:</strong></p>
             
             <div style="margin: 15px 0; padding: 15px; background: #e7f3ff; border-radius: 8px;">
-                <h4>🚀 Step-by-Step Process</h4>
+                <h4>🚀 Vue.js Extraction Process</h4>
                 <ol style="margin: 10px 0 10px 20px; line-height: 1.8;">
                     <li><strong>Open ASICS B2B</strong> in your regular browser</li>
                     <li><strong>Log in completely</strong> and navigate to a working order page</li>
-                    <li><strong>Verify page loads</strong> with full inventory data visible</li>
-                    <li><strong>Download the session extractor</strong> by clicking the button above</li>
+                    <li><strong>Wait for inventory grid</strong> to load completely (you see quantities)</li>
+                    <li><strong>Download the Vue.js extractor</strong> by clicking the button above</li>
                     <li><strong>Run the extractor script</strong> in browser console (F12 → Console)</li>
                     <li><strong>Copy the complete JSON</strong> and paste it into the textarea above</li>
-                    <li><strong>Import and test</strong> immediately while session is fresh</li>
+                    <li><strong>Import and test</strong> - scraper will wait for Vue.js content</li>
                 </ol>
             </div>
             
             <div class="code">
-                <strong>What gets extracted:</strong><br>
-                • All cookies (authentication)<br>
-                • Session storage (temporary data)<br>
-                • Local storage (persistent data)<br>
-                • User agent (browser fingerprint)<br>
-                • Browser fingerprint data (screen, timezone, etc.)
+                <strong>Vue.js Enhanced Features:</strong><br>
+                • 8+ second wait for Vue.js app to load<br>
+                • Dynamic inventory grid detection<br>
+                • Color/size matrix extraction<br>
+                • Quantity parsing (0, 3, 1, 0+, -)<br>
+                • Real-time debug logging
             </div>
             
             <div style="margin: 15px 0; padding: 15px; background: #d4edda; border-radius: 8px;">
-                <h4>🥷 Stealth Features</h4>
-                <p>This version uses advanced browser fingerprinting bypass, stealth user agents, and complete session state replication to maximize authentication success.</p>
+                <h4>⚡ Expected Output</h4>
+                <p><strong>MAGIC SPEED 4 (1011B875)</strong><br>
+                📍 Color 600 - FLASH RED/WHITE: Size 7 (3 units), Size 7.5 (1 unit)<br>
+                📍 Color 401 - SOOTHING SEA/BLACK: Size 7.5 (1 unit), Size 9 (1 unit)<br>
+                📍 Color 750 - SAFETY YELLOW/BLACK: Not available</p>
             </div>
         </div>
     </div>
@@ -589,12 +604,12 @@ class EnhancedASICSScraper {
             const resultDiv = document.getElementById('sessionResult');
             
             if (!sessionData) {
-                resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">Please paste complete session JSON first!</div>';
+                resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">Please paste Vue.js session JSON first!</div>';
                 return;
             }
 
             try {
-                resultDiv.innerHTML = '<div class="info" style="padding: 10px; margin-top: 10px;">🚀 Importing complete session...</div>';
+                resultDiv.innerHTML = '<div class="info" style="padding: 10px; margin-top: 10px;">⚡ Importing Vue.js session...</div>';
                 
                 const sessionObj = JSON.parse(sessionData);
                 
@@ -607,7 +622,7 @@ class EnhancedASICSScraper {
                 const result = await response.json();
                 
                 if (result.success) {
-                    resultDiv.innerHTML = '<div class="success" style="padding: 10px; margin-top: 10px;">✅ Complete session imported!<br>Cookies: ' + result.cookieCount + '<br>Storage keys: ' + result.storageKeys + '<br>Session valid: ' + (result.sessionValid ? 'Yes' : 'No') + '</div>';
+                    resultDiv.innerHTML = '<div class="success" style="padding: 10px; margin-top: 10px;">✅ Vue.js session imported!<br>Cookies: ' + result.cookieCount + '<br>Storage keys: ' + result.storageKeys + '<br>Session valid: ' + (result.sessionValid ? 'Yes' : 'No') + '</div>';
                     
                     if (result.sessionValid) {
                         setTimeout(() => location.reload(), 2000);
@@ -624,7 +639,7 @@ class EnhancedASICSScraper {
             try {
                 window.open('/api/generate-session-extractor', '_blank');
             } catch (error) {
-                alert('Error downloading extractor: ' + error.message);
+                alert('Error downloading Vue.js extractor: ' + error.message);
             }
         }
 
@@ -632,7 +647,7 @@ class EnhancedASICSScraper {
             const url = document.getElementById('newUrl').value.trim();
             const resultDiv = document.getElementById('sessionResult');
             
-            resultDiv.innerHTML = '<div class="info" style="padding: 10px; margin-top: 10px;">🧪 Testing complete session...</div>';
+            resultDiv.innerHTML = '<div class="info" style="padding: 10px; margin-top: 10px;">⚡ Testing Vue.js session...</div>';
             
             try {
                 const response = await fetch('/api/test-complete-session', {
@@ -644,9 +659,9 @@ class EnhancedASICSScraper {
                 const result = await response.json();
                 
                 if (result.success) {
-                    resultDiv.innerHTML = '<div class="success" style="padding: 10px; margin-top: 10px;">✅ Complete session test passed!<br><strong>Message:</strong> ' + result.message + '</div>';
+                    resultDiv.innerHTML = '<div class="success" style="padding: 10px; margin-top: 10px;">✅ Vue.js session test passed!<br><strong>Message:</strong> ' + result.message + '</div>';
                 } else {
-                    resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Session test failed: ' + result.message + '</div>';
+                    resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Vue.js session test failed: ' + result.message + '</div>';
                 }
             } catch (error) {
                 resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Error: ' + error.message + '</div>';
@@ -657,13 +672,13 @@ class EnhancedASICSScraper {
             const statusDiv = document.getElementById('scrapingStatus');
             
             try {
-                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🥷 Starting stealth scraping...</div>';
+                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">⚡ Starting Vue.js scraping...</div>';
                 
                 const response = await fetch('/api/start-enhanced-scraping', { method: 'POST' });
                 const result = await response.json();
                 
                 if (result.success) {
-                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Stealth scraping started!</div>';
+                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Vue.js scraping started!</div>';
                     pollProgress();
                 } else {
                     statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Failed: ' + result.error + '</div>';
@@ -680,13 +695,13 @@ class EnhancedASICSScraper {
                 
                 if (data.active) {
                     const progress = (data.completed / data.total) * 100;
-                    document.getElementById('progressBar').innerHTML = '<div style="background: #f0f0f0; border-radius: 4px; padding: 5px;"><div style="background: #28a745; height: 20px; width: ' + progress + '%; border-radius: 4px; transition: width 0.3s;"></div><div style="text-align: center; margin-top: 5px; font-size: 12px;">🥷 ' + data.completed + ' of ' + data.total + ' URLs (' + Math.round(progress) + '%)</div></div>';
+                    document.getElementById('progressBar').innerHTML = '<div style="background: #f0f0f0; border-radius: 4px; padding: 5px;"><div style="background: #00ff87; height: 20px; width: ' + progress + '%; border-radius: 4px; transition: width 0.3s;"></div><div style="text-align: center; margin-top: 5px; font-size: 12px;">⚡ Vue.js: ' + data.completed + ' of ' + data.total + ' URLs (' + Math.round(progress) + '%)</div></div>';
                     
                     if (data.completed < data.total) {
                         setTimeout(pollProgress, 3000);
                     } else {
                         document.getElementById('scrapingStatus').innerHTML = 
-                            '<div class="success" style="padding: 10px;">🎉 Stealth scraping completed!</div>';
+                            '<div class="success" style="padding: 10px;">🎉 Vue.js scraping completed!</div>';
                         refreshLogs();
                         refreshDebugLogs();
                     }
@@ -739,9 +754,9 @@ class EnhancedASICSScraper {
                 
                 const logsContainer = document.getElementById('logs');
                 if (logs.length > 0) {
-                    logsContainer.innerHTML = logs.map(log => '<div style="margin: 5px 0; padding: 8px; border-left: 3px solid ' + (log.status === 'success' ? '#28a745' : '#dc3545') + ';"><strong>' + new Date(log.timestamp).toLocaleString() + ':</strong><br>URL: ' + log.url + '<br>Status: ' + log.status + ' | Products: ' + (log.productCount || 0) + '<br>' + (log.error ? 'Error: ' + log.error : '') + '</div>').join('');
+                    logsContainer.innerHTML = logs.map(log => '<div style="margin: 5px 0; padding: 8px; border-left: 3px solid ' + (log.status === 'success' ? '#00ff87' : '#dc3545') + ';"><strong>' + new Date(log.timestamp).toLocaleString() + ':</strong><br>URL: ' + log.url + '<br>Status: ' + log.status + ' | Products: ' + (log.productCount || 0) + '<br>' + (log.error ? 'Error: ' + log.error : '') + '</div>').join('');
                 } else {
-                    logsContainer.innerHTML = '<div style="color: #666;">No logs available yet.</div>';
+                    logsContainer.innerHTML = '<div style="color: #666;">No Vue.js logs available yet.</div>';
                 }
             } catch (error) {
                 document.getElementById('logs').innerHTML = '<div style="color: red;">Error loading logs: ' + error.message + '</div>';
@@ -755,9 +770,9 @@ class EnhancedASICSScraper {
                 
                 const debugContainer = document.getElementById('debugLogs');
                 if (logs.length > 0) {
-                    debugContainer.innerHTML = logs.map(log => '<div style="margin: 3px 0; padding: 5px; border-left: 2px solid #007bff;"><strong>' + new Date(log.timestamp).toLocaleString() + ':</strong> ' + log.message + '<br>' + (log.data ? '<pre style="font-size: 9px; margin: 3px 0;">' + JSON.stringify(log.data, null, 2) + '</pre>' : '') + '</div>').join('');
+                    debugContainer.innerHTML = logs.map(log => '<div style="margin: 3px 0; padding: 5px; border-left: 2px solid #00ff87;"><strong>' + new Date(log.timestamp).toLocaleString() + ':</strong> ' + log.message + '<br>' + (log.data ? '<pre style="font-size: 9px; margin: 3px 0;">' + JSON.stringify(log.data, null, 2) + '</pre>' : '') + '</div>').join('');
                 } else {
-                    debugContainer.innerHTML = '<div style="color: #666;">No debug logs available.</div>';
+                    debugContainer.innerHTML = '<div style="color: #666;">No Vue.js debug logs available.</div>';
                 }
                 
                 debugContainer.scrollTop = debugContainer.scrollHeight;
@@ -786,13 +801,13 @@ class EnhancedASICSScraper {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'asics-stealth-results-' + new Date().toISOString().split('T')[0] + '.csv';
+                    a.download = 'asics-vue-inventory-' + new Date().toISOString().split('T')[0] + '.csv';
                     a.click();
                     URL.revokeObjectURL(url);
                     
-                    alert('✅ Stealth CSV exported with ' + data.products.length + ' products!');
+                    alert('✅ Vue.js inventory CSV exported with ' + data.products.length + ' products!');
                 } else {
-                    alert('❌ No results to export. Run a scraping session first.');
+                    alert('❌ No inventory data to export. Run a Vue.js scraping session first.');
                 }
             } catch (error) {
                 alert('Error exporting results: ' + error.message);
@@ -806,18 +821,19 @@ class EnhancedASICSScraper {
                 
                 if (data.success && data.products.length > 0) {
                     let html = '<div style="max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px;">';
-                    html += '<h4>🥷 Stealth Extraction Results (' + data.products.length + ' products):</h4>';
+                    html += '<h4>⚡ Vue.js Inventory Extraction Results (' + data.products.length + ' products):</h4>';
                     
                     data.products.forEach((product, index) => {
                         html += '<div style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
                         html += '<strong>' + (index + 1) + '. ' + product.name + '</strong><br>';
+                        if (product.styleId) html += 'Style ID: ' + product.styleId + '<br>';
                         html += 'SKU: ' + product.sku + '<br>';
-                        html += 'Price: ' + product.price + '<br>';
-                        if (product.quantity) html += 'Quantity: ' + product.quantity + '<br>';
-                        if (product.color) html += 'Color: ' + product.color + '<br>';
-                        if (product.size) html += 'Size: ' + product.size + '<br>';
-                        html += 'Source: ' + product.sourceUrl + '<br>';
-                        html += 'Scraped: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
+                        if (product.colorCode) html += 'Color: ' + product.colorCode + ' - ' + product.colorName + '<br>';
+                        if (product.sizeUS) html += 'Size: ' + product.sizeUS + '<br>';
+                        html += 'Quantity: ' + product.rawQuantity + ' (' + product.quantity + ')<br>';
+                        html += 'Available: ' + (product.available ? 'Yes' : 'No') + '<br>';
+                        html += 'Extracted: ' + new Date(product.extractedAt).toLocaleString() + '<br>';
+                        html += 'Method: ' + product.extractionMethod + '<br>';
                         html += '</div>';
                     });
                     
@@ -833,7 +849,7 @@ class EnhancedASICSScraper {
                     overlay.appendChild(modal);
                     document.body.appendChild(overlay);
                 } else {
-                    alert('❌ No results to view. Run a scraping session first.');
+                    alert('❌ No inventory data to view. Run a Vue.js scraping session first.');
                 }
             } catch (error) {
                 alert('Error viewing results: ' + error.message);
@@ -841,21 +857,23 @@ class EnhancedASICSScraper {
         }
 
         function convertToCSV(products) {
-            const headers = ['Name', 'SKU', 'Price', 'Quantity', 'Color', 'Size', 'Source URL', 'Product Link', 'Image URL', 'Inventory Data', 'Scraped At'];
+            const headers = ['Name', 'Style ID', 'SKU', 'Color Code', 'Color Name', 'Size US', 'Quantity', 'Raw Quantity', 'Available', 'Price', 'Source URL', 'Extraction Method', 'Scraped At'];
             let csv = headers.join(',') + '\\n';
             
             products.forEach(product => {
                 const row = [
                     '"' + (product.name || '').replace(/"/g, '""') + '"',
+                    '"' + (product.styleId || '').replace(/"/g, '""') + '"',
                     '"' + (product.sku || '').replace(/"/g, '""') + '"',
-                    '"' + (product.price || '').replace(/"/g, '""') + '"',
+                    '"' + (product.colorCode || '').replace(/"/g, '""') + '"',
+                    '"' + (product.colorName || '').replace(/"/g, '""') + '"',
+                    '"' + (product.sizeUS || '').replace(/"/g, '""') + '"',
                     '"' + (product.quantity || '').replace(/"/g, '""') + '"',
-                    '"' + (product.color || '').replace(/"/g, '""') + '"',
-                    '"' + (product.size || '').replace(/"/g, '""') + '"',
+                    '"' + (product.rawQuantity || '').replace(/"/g, '""') + '"',
+                    '"' + (product.available || '').replace(/"/g, '""') + '"',
+                    '"' + (product.price || '').replace(/"/g, '""') + '"',
                     '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
-                    '"' + (product.link || '').replace(/"/g, '""') + '"',
-                    '"' + (product.imageUrl || '').replace(/"/g, '""') + '"',
-                    '"' + (product.inventoryData || '').replace(/"/g, '""') + '"',
+                    '"' + (product.extractionMethod || '').replace(/"/g, '""') + '"',
                     '"' + (product.extractedAt || '').replace(/"/g, '""') + '"'
                 ];
                 csv += row.join(',') + '\\n';
@@ -875,7 +893,7 @@ class EnhancedASICSScraper {
     // Enhanced cookie parsing with better handling
     parseCookieStringEnhanced(cookieString) {
         try {
-            this.addDebugLog('Enhanced cookie parsing with stealth features', { length: cookieString.length });
+            this.addDebugLog('Enhanced cookie parsing for Vue.js scraping', { length: cookieString.length });
             
             const cookies = [];
             const cookiePairs = cookieString.split(';');
@@ -927,10 +945,10 @@ class EnhancedASICSScraper {
         }
     }
 
-    // Complete session validity testing with full browser state
+    // Complete session validity testing with Vue.js awareness
     async testCompleteSessionValidity(testUrl = null) {
         try {
-            this.addDebugLog('Starting complete session validity test with stealth mode');
+            this.addDebugLog('Starting Vue.js-aware session validity test');
             
             if (this.sessionCookies.length === 0) {
                 return {
@@ -956,7 +974,7 @@ class EnhancedASICSScraper {
             // Test URL
             const urlToTest = testUrl || 'https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18';
             
-            this.addDebugLog('Testing complete session with URL', { url: urlToTest });
+            this.addDebugLog('Testing Vue.js session with URL', { url: urlToTest });
             
             // First establish context if needed
             if (urlToTest.includes('/orders/')) {
@@ -973,9 +991,10 @@ class EnhancedASICSScraper {
                 timeout: 30000 
             });
             
-            await page.waitForTimeout(3000);
+            // Wait for Vue.js content to load
+            await page.waitForTimeout(5000);
             
-            // Enhanced result analysis
+            // Enhanced result analysis with Vue.js awareness
             const result = await page.evaluate(() => {
                 const url = window.location.href;
                 const title = document.title;
@@ -989,14 +1008,20 @@ class EnhancedASICSScraper {
                 const hasInventoryContent = bodyText.includes('inventory') || bodyText.includes('quantity') || bodyText.includes('available');
                 const hasAsicsContent = bodyText.includes('asics') || bodyText.includes('b2b');
                 
+                // Vue.js specific checks
+                const hasVueApp = window.Vue || document.querySelector('[data-v-]') !== null;
+                const hasAsicsGrid = document.querySelector('.grid.grid-flow-col') !== null;
+                const hasInventoryData = /\\d+\\+?/.test(bodyText);
+                const hasColorData = /\\d{3}\\s*-\\s*\\w+/.test(bodyText);
+                
                 // Look for specific ASICS B2B content
-                const hasColorCodes = /\b\d{3}\b/.test(bodyText);
-                const hasProductCodes = /\b\d{7}[A-Z]\b/.test(bodyText);
+                const hasColorCodes = /\\b\\d{3}\\b/.test(bodyText);
+                const hasProductCodes = /\\b\\d{7}[A-Z]\\b/.test(bodyText);
                 const hasPricing = bodyText.includes('price') || bodyText.includes('$');
                 
                 const isLoggedIn = !hasLoginForm && !urlHasLogin && !bodyHasLoginText;
                 const hasOrderAccess = isLoggedIn && (hasOrderContent || hasInventoryContent);
-                const hasFullAccess = hasOrderAccess && (hasColorCodes || hasProductCodes || hasPricing);
+                const hasFullAccess = hasOrderAccess && (hasColorCodes || hasProductCodes || hasPricing || hasInventoryData);
                 
                 return {
                     url,
@@ -1013,46 +1038,51 @@ class EnhancedASICSScraper {
                     hasColorCodes,
                     hasProductCodes,
                     hasPricing,
+                    hasVueApp,
+                    hasAsicsGrid,
+                    hasInventoryData,
+                    hasColorData,
                     bodyPreview: bodyText.slice(0, 500),
-                    pageSize: bodyText.length
+                    pageSize: bodyText.length,
+                    vueElementCount: document.querySelectorAll('[data-v-]').length
                 };
             });
             
             await browser.close();
             
-            this.addDebugLog('Complete session test completed', result);
+            this.addDebugLog('Vue.js session test completed', result);
             
-            if (result.hasFullAccess) {
+            if (result.hasFullAccess && result.hasInventoryData) {
                 return {
                     valid: true,
-                    message: 'Complete session with full ASICS B2B access confirmed!',
+                    message: 'Vue.js session with full ASICS B2B inventory access confirmed!',
                     details: result
                 };
             } else if (result.hasOrderAccess) {
                 return {
                     valid: true,
-                    message: 'Session active with order access - ready for scraping',
+                    message: 'Vue.js session active with order access - ready for scraping',
                     details: result
                 };
             } else if (result.isLoggedIn) {
                 return {
                     valid: true,
-                    message: 'Basic session active but may need fresh order context',
+                    message: 'Basic Vue.js session active but may need fresh order context',
                     details: result
                 };
             } else {
                 return {
                     valid: false,
-                    message: 'Session appears expired - extract fresh session data',
+                    message: 'Vue.js session appears expired - extract fresh session data',
                     details: result
                 };
             }
             
         } catch (error) {
-            this.addDebugLog('Complete session test error', { error: error.message });
+            this.addDebugLog('Vue.js session test error', { error: error.message });
             return {
                 valid: false,
-                message: 'Session test error: ' + error.message,
+                message: 'Vue.js session test error: ' + error.message,
                 details: { error: error.message }
             };
         }
@@ -1060,7 +1090,7 @@ class EnhancedASICSScraper {
 
     // Enhanced stealth mode setup
     async setupStealthMode(page) {
-        this.addDebugLog('Setting up enhanced stealth mode');
+        this.addDebugLog('Setting up enhanced stealth mode for Vue.js');
         
         // Set enhanced user agent
         await page.setUserAgent(this.userAgent);
@@ -1090,7 +1120,7 @@ class EnhancedASICSScraper {
             isMobile: false
         });
         
-        // Enhanced stealth JavaScript injection
+        // Enhanced stealth JavaScript injection with Vue.js compatibility
         await page.evaluateOnNewDocument(() => {
             // Remove webdriver property
             Object.defineProperty(navigator, 'webdriver', {
@@ -1153,14 +1183,24 @@ class EnhancedASICSScraper {
                     level: 1,
                 }),
             });
+            
+            // Vue.js detection compatibility
+            window.__VUE_DEVTOOLS_GLOBAL_HOOK__ = {
+                Vue: undefined,
+                emit: () => {},
+                on: () => {},
+                once: () => {},
+                off: () => {},
+                appRecords: []
+            };
         });
         
-        this.addDebugLog('Stealth mode setup completed');
+        this.addDebugLog('Vue.js-compatible stealth mode setup completed');
     }
 
     // Restore complete session state including storage
     async restoreCompleteSessionState(page) {
-        this.addDebugLog('Restoring complete session state');
+        this.addDebugLog('Restoring complete session state for Vue.js scraping');
         
         // Set cookies
         if (this.sessionCookies.length > 0) {
@@ -1170,7 +1210,7 @@ class EnhancedASICSScraper {
             
             if (validCookies.length > 0) {
                 await page.setCookie(...validCookies);
-                this.addDebugLog('Restored cookies', { count: validCookies.length });
+                this.addDebugLog('Restored cookies for Vue.js', { count: validCookies.length });
             }
         }
         
@@ -1188,7 +1228,7 @@ class EnhancedASICSScraper {
                     }
                 }
             }, this.sessionStorage);
-            this.addDebugLog('Restored sessionStorage', { keys: Object.keys(this.sessionStorage).length });
+            this.addDebugLog('Restored sessionStorage for Vue.js', { keys: Object.keys(this.sessionStorage).length });
         }
         
         // Restore localStorage
@@ -1202,36 +1242,33 @@ class EnhancedASICSScraper {
                     }
                 }
             }, this.localStorage);
-            this.addDebugLog('Restored localStorage', { keys: Object.keys(this.localStorage).length });
+            this.addDebugLog('Restored localStorage for Vue.js', { keys: Object.keys(this.localStorage).length });
         }
         
         // Apply session fingerprint data if available
         if (this.sessionFingerprint) {
             await page.evaluate((fingerprint) => {
-                // Apply viewport if specified
                 if (fingerprint.viewport) {
-                    // Can't change viewport after page creation, but can note it
                     console.log('Session viewport:', fingerprint.viewport);
                 }
                 
-                // Apply timezone if specified (this is limited but we can try)
                 if (fingerprint.timezone) {
                     console.log('Session timezone:', fingerprint.timezone);
                 }
             }, this.sessionFingerprint);
-            this.addDebugLog('Applied session fingerprint data');
+            this.addDebugLog('Applied session fingerprint data for Vue.js');
         }
         
         await page.waitForTimeout(1000);
-        this.addDebugLog('Complete session state restoration finished');
+        this.addDebugLog('Complete Vue.js session state restoration finished');
     }
 
-    // Enhanced scraping with stealth mode
-    async startEnhancedStealthScraping() {
+    // Enhanced scraping with Vue.js dynamic content handling
+    async startEnhancedVueJSScraping() {
         const startTime = Date.now();
-        const batchId = 'stealth_' + Date.now();
+        const batchId = 'vue_js_' + Date.now();
         
-        this.addDebugLog('Starting enhanced stealth scraping session', { 
+        this.addDebugLog('Starting Vue.js-enhanced scraping session', { 
             urlCount: this.urlsToMonitor.length,
             batchId 
         });
@@ -1243,14 +1280,14 @@ class EnhancedASICSScraper {
                 const url = this.urlsToMonitor[i];
                 
                 try {
-                    this.addDebugLog('Stealth scraping URL ' + (i + 1) + '/' + this.urlsToMonitor.length, { url });
+                    this.addDebugLog('Vue.js scraping URL ' + (i + 1) + '/' + this.urlsToMonitor.length, { url });
                     
                     // Rate limit between requests
                     if (i > 0) {
                         await this.rateLimitedBrowserlessRequest();
                     }
                     
-                    const result = await this.stealthScrapeUrl(url);
+                    const result = await this.vueJsStealthScrapeUrl(url);
                     
                     const scrapingResult = {
                         url,
@@ -1260,19 +1297,19 @@ class EnhancedASICSScraper {
                         timestamp: new Date(),
                         batchId,
                         analysis: result.analysis,
-                        enhancement: 'stealth-mode'
+                        enhancement: 'vue-js-dynamic-content'
                     };
                     
                     results.push(scrapingResult);
                     this.scrapingLogs.unshift(scrapingResult);
                     
-                    this.addDebugLog('Stealth scraped ' + result.products.length + ' products from ' + url);
+                    this.addDebugLog('Vue.js scraped ' + result.products.length + ' products from ' + url);
                     
                     // Update progress
                     this.scrapingProgress.completed = i + 1;
                     
                 } catch (urlError) {
-                    this.addDebugLog('Failed to stealth scrape ' + url, { error: urlError.message });
+                    this.addDebugLog('Failed to Vue.js scrape ' + url, { error: urlError.message });
                     
                     const errorResult = {
                         url,
@@ -1281,7 +1318,7 @@ class EnhancedASICSScraper {
                         productCount: 0,
                         timestamp: new Date(),
                         batchId,
-                        enhancement: 'stealth-mode'
+                        enhancement: 'vue-js-dynamic-content'
                     };
                     
                     results.push(errorResult);
@@ -1293,22 +1330,22 @@ class EnhancedASICSScraper {
             this.scrapingProgress.active = false;
             
             const duration = Math.round((Date.now() - startTime) / 1000);
-            this.addDebugLog('Enhanced stealth scraping session completed', { 
+            this.addDebugLog('Vue.js-enhanced scraping session completed', { 
                 duration: duration + 's',
                 totalResults: results.length,
                 successCount: results.filter(r => r.status === 'success').length
             });
             
         } catch (error) {
-            this.addDebugLog('Enhanced stealth scraping session failed', { error: error.message });
+            this.addDebugLog('Vue.js-enhanced scraping session failed', { error: error.message });
             this.scrapingProgress.active = false;
         }
     }
 
-    // Stealth scrape individual URL
-    async stealthScrapeUrl(url) {
+    // Enhanced stealth scrape individual URL with Vue.js handling
+    async vueJsStealthScrapeUrl(url) {
         try {
-            this.addDebugLog('Starting stealth scrape for URL', { url });
+            this.addDebugLog('Starting Vue.js-aware stealth scrape for URL', { url });
             
             const browser = await puppeteer.connect({
                 browserWSEndpoint: this.browserlessEndpoint,
@@ -1325,7 +1362,7 @@ class EnhancedASICSScraper {
             
             // For order URLs, establish context first
             if (url.includes('/orders/')) {
-                this.addDebugLog('Order URL detected, establishing stealth context');
+                this.addDebugLog('Order URL detected, establishing Vue.js context');
                 await page.goto('https://b2b.asics.com/', { 
                     waitUntil: 'domcontentloaded', 
                     timeout: 20000 
@@ -1334,36 +1371,77 @@ class EnhancedASICSScraper {
             }
             
             // Navigate to target URL
-            this.addDebugLog('Navigating to target URL with stealth mode', { url });
+            this.addDebugLog('Navigating to target URL with Vue.js awareness', { url });
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.waitForTimeout(3000);
             
-            // Enhanced page analysis
+            // CRITICAL: Extended wait for Vue.js app to fully load and populate
+            this.addDebugLog('Waiting for Vue.js content to fully load...');
+            await page.waitForTimeout(8000); // Increased wait time
+            
+            // Wait for key ASICS elements to appear
+            try {
+                await page.waitForSelector('h1', { timeout: 10000 });
+                this.addDebugLog('Product title loaded');
+                
+                await page.waitForSelector('.product-info', { timeout: 5000 });
+                this.addDebugLog('Product info loaded');
+                
+                // Wait for inventory grid - this is crucial
+                await page.waitForSelector('.grid.grid-flow-col', { timeout: 15000 });
+                this.addDebugLog('Inventory grid loaded');
+                
+                // Additional wait for quantities to populate
+                await page.waitForTimeout(3000);
+                this.addDebugLog('Final Vue.js stabilization complete');
+                
+            } catch (waitError) {
+                this.addDebugLog('Some Vue.js elements missing, proceeding with extraction', { 
+                    error: waitError.message 
+                });
+            }
+            
+            // Enhanced page analysis with Vue.js awareness
             const pageAnalysis = await page.evaluate(() => {
                 const url = window.location.href;
                 const title = document.title;
                 const bodyText = document.body ? document.body.innerText : '';
                 
+                // Vue.js specific checks
+                const hasVueApp = window.Vue || document.querySelector('[data-v-]') !== null;
+                const hasAsicsGrid = document.querySelector('.grid.grid-flow-col') !== null;
+                const hasInventoryData = /\d+\+?/.test(bodyText);
+                const hasColorData = /\d{3}\s*-\s*\w+/.test(bodyText);
+                
                 return {
                     url,
                     title,
                     bodyLength: bodyText.length,
+                    hasVueApp,
+                    hasAsicsGrid,
+                    hasInventoryData,
+                    hasColorData,
                     hasInventoryKeywords: /inventory|stock|available|quantity|qty/i.test(bodyText),
                     hasOrderKeywords: /order|purchase|cart|checkout/i.test(bodyText),
                     hasProductKeywords: /product|item|sku|model/i.test(bodyText),
-                    hasAsicsKeywords: /asics|b2b/i.test(bodyText),
+                    hasAsicsKeywords: /asics|b2b|magic.speed/i.test(bodyText),
                     hasLoginRedirect: url.includes('login') || url.includes('authentication'),
                     bodyPreview: bodyText.slice(0, 1000),
                     isOrderPage: url.includes('/orders/'),
-                    isProductPage: url.includes('/products/')
+                    isProductPage: url.includes('/products/'),
+                    vueElementCount: document.querySelectorAll('[data-v-]').length,
+                    gridElementCount: document.querySelectorAll('.grid').length
                 };
             });
             
-            this.addDebugLog('Enhanced stealth page analysis completed', pageAnalysis);
+            this.addDebugLog('Enhanced Vue.js page analysis completed', pageAnalysis);
             
-            // Enhanced product extraction with ASICS-specific selectors
+            // Enhanced product extraction with Vue.js handling
             const products = await this.extractASICSProductsEnhanced(page);
-            this.addDebugLog('Enhanced stealth product extraction completed', { productCount: products.length });
+            this.addDebugLog('Vue.js-aware product extraction completed', { 
+                productCount: products.length,
+                hasInventoryData: pageAnalysis.hasInventoryData,
+                hasColorData: pageAnalysis.hasColorData
+            });
             
             await browser.close();
             
@@ -1374,353 +1452,264 @@ class EnhancedASICSScraper {
             };
             
         } catch (error) {
-            this.addDebugLog('Stealth scrape error', { url, error: error.message });
+            this.addDebugLog('Vue.js-aware stealth scrape error', { url, error: error.message });
             throw error;
         }
     }
 
-    // Enhanced ASICS-specific product extraction
+    // Enhanced ASICS-specific product extraction with Vue.js dynamic content handling
     async extractASICSProductsEnhanced(page) {
+        this.addDebugLog('Starting Vue.js-aware ASICS extraction');
+        
+        // CRITICAL: Wait for Vue.js content to load completely
+        await page.waitForTimeout(5000); // Initial wait
+        
+        // Wait for specific ASICS B2B content indicators
+        try {
+            await page.waitForSelector('h1', { timeout: 10000 });
+            await page.waitForSelector('.grid.grid-flow-col', { timeout: 15000 });
+            this.addDebugLog('Vue.js content detection successful');
+        } catch (e) {
+            this.addDebugLog('Vue.js content detection timeout, proceeding anyway');
+        }
+        
+        // Additional wait for inventory grid to populate
+        await page.waitForTimeout(3000);
+        
         return await page.evaluate(() => {
             const products = [];
             const debugInfo = [];
             
-            // Enhanced ASICS B2B specific selectors based on the working browser extension
-            const containerSelectors = [
-                // Order page specific
-                'table tbody tr',
-                '.grid.grid-flow-col.items-center', // From the extension
-                '.order-item',
-                '.product-row',
-                '.inventory-item',
-                '.line-item',
-                
-                // General product containers
-                '[data-product]',
-                '[data-sku]',
-                '.product',
-                '.item',
-                'li div.flex.items-center.gap-2', // Color containers from extension
-                
-                // Fallback containers
-                'div[class*="grid"]',
-                'div[class*="flex"]'
-            ];
+            debugInfo.push('🚀 Starting Vue.js-aware ASICS B2B extraction');
+            debugInfo.push('Page URL: ' + window.location.href);
+            debugInfo.push('Page title: ' + document.title);
+            debugInfo.push('Body length: ' + (document.body ? document.body.innerText.length : 0));
             
-            const nameSelectors = [
-                'h1',
-                '.product-name',
-                '.item-name',
-                '.name',
-                '.description',
-                '.title',
-                '[data-testid="product-name"]',
-                '[data-product-name]'
-            ];
+            // EXACT selectors based on the working HTML structure
+            const productNameSelector = 'h1.heading-lg.sm\\:heading-xl.font-bold';
+            const styleIdSelector = '.product-info-label'; // Contains "1011B875"
+            const colorContainerSelector = 'li.flex.sm\\:max-w-\\[30rem\\].flex-col.items-end';
+            const sizeHeaderSelector = '.grid.grid-flow-col.w-full.h-\\[5\\.5rem\\] .bg-primary.text-white';
+            const inventoryRowSelector = '.grid.grid-flow-col.items-center.w-full.h-\\[5\\.5rem\\]';
             
-            const priceSelectors = [
-                '.price',
-                '.cost',
-                '.amount',
-                '.msrp',
-                '.unit-price',
-                '.wholesale-price',
-                '[data-price]',
-                '[class*="price"]'
-            ];
+            // Extract basic product info
+            let productName = 'Unknown Product';
+            let styleId = 'Unknown Style';
             
-            const skuSelectors = [
-                '.sku',
-                '.style-id',
-                '.model-number',
-                '.product-id',
-                '[data-sku]',
-                '[data-style-id]',
-                '[data-product-id]'
-            ];
+            // Get product name
+            const nameElement = document.querySelector(productNameSelector) || 
+                               document.querySelector('h1') ||
+                               document.querySelector('[class*="heading"]');
+            if (nameElement) {
+                productName = nameElement.textContent.trim();
+                debugInfo.push('✅ Found product name: ' + productName);
+            } else {
+                debugInfo.push('❌ Product name not found');
+            }
             
-            // ASICS B2B specific inventory selectors (from working extension)
-            const quantitySelectors = [
-                '.flex.items-center.justify-center span', // Main quantity selector from extension
-                '.quantity',
-                '.stock',
-                '.available',
-                '.inventory',
-                'input[type="number"]',
-                '[class*="quantity"]',
-                '[class*="stock"]'
-            ];
-            
-            // Color selectors (from working extension)
-            const colorSelectors = [
-                'li div.flex.items-center.gap-2 span', // Color code/name from extension
-                '.color',
-                '.colorway',
-                '[class*="color"]',
-                '[data-color]',
-                '.variant'
-            ];
-            
-            // Size selectors (from working extension)
-            const sizeSelectors = [
-                '.bg-primary.text-white', // Size headers from extension
-                '.size',
-                '[class*="size"]',
-                '[data-size]',
-                '.dimension'
-            ];
-            
-            debugInfo.push('Starting ASICS B2B enhanced extraction');
-            
-            // Try to extract using the working extension patterns first
-            debugInfo.push('Attempting extraction using working extension patterns');
-            
-            // Look for color containers (from working extension)
-            const colorElements = document.querySelectorAll('li div.flex.items-center.gap-2');
-            const colors = [];
-            
-            colorElements.forEach(el => {
-                const spans = el.querySelectorAll('span');
-                if (spans.length >= 3) {
-                    const code = spans[0].textContent.trim();
-                    const separator = spans[1].textContent.trim();
-                    const name = spans[2].textContent.trim();
-                    
-                    if (code.match(/^\d{3}$/) && separator === '-') {
-                        colors.push({ code, name });
-                        debugInfo.push('Found color: ' + code + ' - ' + name);
-                    }
+            // Get style ID from product info section
+            const productInfoElements = document.querySelectorAll('.product-info');
+            productInfoElements.forEach(info => {
+                const label = info.querySelector('.product-info-label');
+                const value = info.querySelector('.product-info-value');
+                if (label && value && value.textContent.trim() === 'Style ID') {
+                    styleId = label.textContent.trim();
+                    debugInfo.push('✅ Found style ID: ' + styleId);
                 }
             });
             
-            // Look for size headers (from working extension)
-            const sizeElements = document.querySelectorAll('.bg-primary.text-white');
-            const sizes = [];
+            // Extract colors with EXACT structure matching
+            const colors = [];
+            const colorElements = document.querySelectorAll('li.flex.sm\\:max-w-\\[30rem\\].flex-col.items-end');
             
-            sizeElements.forEach(el => {
-                const sizeText = el.textContent.trim();
+            debugInfo.push('🎨 Found ' + colorElements.length + ' color containers');
+            
+            colorElements.forEach((colorContainer, index) => {
+                try {
+                    // Look for color code and name in the flex container
+                    const colorInfo = colorContainer.querySelector('.flex.items-center.gap-2');
+                    if (colorInfo) {
+                        const spans = colorInfo.querySelectorAll('span');
+                        if (spans.length >= 3) {
+                            const colorCode = spans[0].textContent.trim();
+                            const separator = spans[1].textContent.trim();
+                            const colorName = spans[2].textContent.trim();
+                            
+                            if (colorCode.match(/^\d{3}$/) && separator === '-') {
+                                colors.push({
+                                    code: colorCode,
+                                    name: colorName,
+                                    index: index
+                                });
+                                debugInfo.push('✅ Color ' + index + ': ' + colorCode + ' - ' + colorName);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    debugInfo.push('❌ Error processing color ' + index + ': ' + e.message);
+                }
+            });
+            
+            // Extract sizes from header row
+            const sizes = [];
+            const sizeElements = document.querySelectorAll('.grid.grid-flow-col.w-full.h-\\[5\\.5rem\\] .bg-primary.text-white');
+            
+            debugInfo.push('📏 Found ' + sizeElements.length + ' size elements');
+            
+            sizeElements.forEach((sizeEl, index) => {
+                const sizeText = sizeEl.textContent.trim();
                 if (sizeText.match(/^\d+\.?\d*$/)) {
                     sizes.push(sizeText);
-                    debugInfo.push('Found size: ' + sizeText);
+                    debugInfo.push('✅ Size ' + index + ': ' + sizeText);
                 }
             });
             
-            // Look for quantity matrix (from working extension)
-            const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
-            const quantityMatrix = [];
+            // Extract inventory matrix from grid rows
+            const inventoryRows = document.querySelectorAll('.grid.grid-flow-col.items-center.w-full.h-\\[5\\.5rem\\]');
+            const inventoryMatrix = [];
             
-            quantityRows.forEach((row, index) => {
+            debugInfo.push('📊 Found ' + inventoryRows.length + ' inventory rows');
+            
+            inventoryRows.forEach((row, rowIndex) => {
                 const quantities = [];
-                const cells = row.querySelectorAll('.flex.items-center.justify-center span');
+                const cells = row.querySelectorAll('.flex.items-center.justify-center');
                 
-                cells.forEach(cell => {
-                    const text = cell.textContent.trim();
-                    if (text.match(/^\d+\+?$/) || text === '0' || text === '0+') {
-                        quantities.push(text);
+                cells.forEach((cell, cellIndex) => {
+                    const quantityText = cell.textContent.trim();
+                    // Match patterns like "0", "3", "1", "0+", "-"
+                    if (quantityText.match(/^(\d+\+?|-)$/)) {
+                        quantities.push(quantityText);
                     }
                 });
                 
                 if (quantities.length > 0) {
-                    quantityMatrix.push(quantities);
-                    debugInfo.push('Found quantity row ' + index + ': ' + quantities.join(', '));
+                    inventoryMatrix.push(quantities);
+                    debugInfo.push('✅ Row ' + rowIndex + ' quantities: [' + quantities.join(', ') + ']');
                 }
             });
             
-            // Extract product info
-            let productName = 'Unknown Product';
-            let styleId = 'Unknown';
-            
-            // Try to get product name
-            const nameElement = document.querySelector('h1') || 
-                               document.querySelector('[data-testid="product-name"]') ||
-                               document.querySelector('.product-name');
-            if (nameElement) {
-                productName = nameElement.textContent.trim();
-                debugInfo.push('Found product name: ' + productName);
-            }
-            
-            // Try to get style ID from URL
-            const urlMatch = window.location.href.match(/\/([0-9A-Z]+)(?:\?|$)/);
-            if (urlMatch) {
-                styleId = urlMatch[1];
-                debugInfo.push('Found style ID from URL: ' + styleId);
-            }
-            
-            // Create inventory matrix if we found colors and sizes
-            if (colors.length > 0 && sizes.length > 0) {
-                debugInfo.push('Creating inventory matrix: ' + colors.length + ' colors x ' + sizes.length + ' sizes');
+            // Create detailed inventory records
+            if (colors.length > 0 && sizes.length > 0 && inventoryMatrix.length > 0) {
+                debugInfo.push('🎯 Creating inventory matrix: ' + colors.length + ' colors × ' + sizes.length + ' sizes');
                 
                 colors.forEach((color, colorIndex) => {
-                    const colorQuantities = quantityMatrix[colorIndex] || [];
+                    const colorQuantities = inventoryMatrix[colorIndex] || [];
                     
                     sizes.forEach((size, sizeIndex) => {
                         const rawQuantity = colorQuantities[sizeIndex] || '0';
-                        const quantity = this.parseQuantity ? this.parseQuantity(rawQuantity) : parseInt(rawQuantity) || 0;
+                        let numericQuantity = 0;
                         
-                        products.push({
+                        // Parse quantity properly
+                        if (rawQuantity === '-') {
+                            numericQuantity = -1; // Not available
+                        } else if (rawQuantity.endsWith('+')) {
+                            numericQuantity = parseInt(rawQuantity.replace('+', '')) || 0;
+                        } else {
+                            numericQuantity = parseInt(rawQuantity) || 0;
+                        }
+                        
+                        // Create detailed product record
+                        const product = {
                             name: productName,
                             styleId: styleId,
                             sku: styleId + '-' + color.code + '-' + size,
                             colorCode: color.code,
                             colorName: color.name,
                             sizeUS: size,
-                            quantity: quantity,
+                            quantity: numericQuantity,
                             rawQuantity: rawQuantity,
-                            price: 'See B2B pricing',
+                            available: rawQuantity !== '-' && numericQuantity > 0,
+                            price: 'See B2B Pricing',
                             imageUrl: '',
                             link: window.location.href,
-                            inventoryData: 'Color: ' + color.code + ' - ' + color.name + ', Size: ' + size + ', Qty: ' + rawQuantity,
+                            inventoryData: `Color: ${color.code} - ${color.name}, Size: ${size}, Quantity: ${rawQuantity}`,
                             extractedAt: new Date().toISOString(),
-                            extractionMethod: 'enhanced-asics-matrix'
-                        });
+                            extractionMethod: 'vue-js-dynamic-matrix',
+                            season: 'Multi-Season', // Could extract from season labels
+                            deliveryDate: '2025-06-18' // From URL if available
+                        };
+                        
+                        products.push(product);
                     });
                 });
                 
-                debugInfo.push('Created ' + products.length + ' inventory records from matrix');
+                debugInfo.push('🎉 Successfully created ' + products.length + ' detailed inventory records');
             }
             
-            // Fallback: Try standard product extraction if matrix method didn't work
+            // Enhanced fallback extraction if matrix method fails
             if (products.length === 0) {
-                debugInfo.push('Matrix extraction failed, trying standard product extraction');
+                debugInfo.push('⚠️ Matrix extraction failed, trying enhanced fallback methods');
                 
-                let productElements = [];
+                // Method 1: Look for any quantity indicators
+                const quantityElements = document.querySelectorAll('span');
+                const foundQuantities = [];
                 
-                // Try each container selector
-                for (const selector of containerSelectors) {
-                    const elements = document.querySelectorAll(selector);
-                    debugInfo.push('Selector "' + selector + '": ' + elements.length + ' elements');
-                    if (elements.length > 0 && productElements.length === 0) {
-                        productElements = Array.from(elements);
-                        debugInfo.push('Using selector: ' + selector);
-                        break;
-                    }
-                }
-                
-                // Extract data from each product element
-                productElements.forEach((element, index) => {
-                    try {
-                        let name = productName;
-                        let price = '';
-                        let sku = styleId;
-                        let quantity = '';
-                        let color = '';
-                        let size = '';
-                        
-                        // Try to find specific data in element
-                        for (const selector of nameSelectors) {
-                            const nameEl = element.querySelector(selector);
-                            if (nameEl && nameEl.textContent?.trim()) {
-                                name = nameEl.textContent.trim();
-                                break;
-                            }
-                        }
-                        
-                        for (const selector of priceSelectors) {
-                            const priceEl = element.querySelector(selector);
-                            if (priceEl && priceEl.textContent?.trim()) {
-                                price = priceEl.textContent.trim();
-                                break;
-                            }
-                        }
-                        
-                        for (const selector of skuSelectors) {
-                            const skuEl = element.querySelector(selector);
-                            if (skuEl && skuEl.textContent?.trim()) {
-                                sku = skuEl.textContent.trim();
-                                break;
-                            }
-                        }
-                        
-                        for (const selector of quantitySelectors) {
-                            const qtyEl = element.querySelector(selector);
-                            if (qtyEl) {
-                                const text = qtyEl.textContent?.trim();
-                                if (text && text.match(/^\d+\+?$/)) {
-                                    quantity = text;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        for (const selector of colorSelectors) {
-                            const colorEl = element.querySelector(selector);
-                            if (colorEl && colorEl.textContent?.trim()) {
-                                color = colorEl.textContent.trim();
-                                break;
-                            }
-                        }
-                        
-                        for (const selector of sizeSelectors) {
-                            const sizeEl = element.querySelector(selector);
-                            if (sizeEl && sizeEl.textContent?.trim()) {
-                                size = sizeEl.textContent.trim();
-                                break;
-                            }
-                        }
-                        
-                        const imageUrl = element.querySelector('img')?.src || '';
-                        const link = element.querySelector('a')?.href || window.location.href;
-                        
-                        if (name || sku || quantity) {
-                            products.push({
-                                name: name || 'Product ' + (index + 1),
-                                sku: sku || 'product-' + index,
-                                colorCode: color.match(/^\d{3}$/) ? color : '',
-                                colorName: color,
-                                sizeUS: size,
-                                quantity: quantity ? (parseInt(quantity.replace('+', '')) || 0) : 0,
-                                rawQuantity: quantity,
-                                price: price || 'See B2B pricing',
-                                imageUrl,
-                                link,
-                                inventoryData: element.textContent?.slice(0, 200) || '',
-                                extractedAt: new Date().toISOString(),
-                                extractionMethod: 'standard-fallback'
-                            });
-                            
-                            debugInfo.push('Standard extraction - Product ' + (index + 1) + ': ' + name);
-                        }
-                    } catch (productError) {
-                        debugInfo.push('Error processing product ' + index + ': ' + productError.message);
+                quantityElements.forEach(el => {
+                    const text = el.textContent.trim();
+                    if (text.match(/^\d+\+?$/) && parseInt(text) > 0) {
+                        foundQuantities.push({
+                            quantity: text,
+                            element: el
+                        });
                     }
                 });
-            }
-            
-            // Final fallback: Extract basic page info if no products found
-            if (products.length === 0) {
-                debugInfo.push('No products found with any method, creating basic page record');
                 
-                const pageTitle = document.title;
-                const bodyText = document.body ? document.body.innerText : '';
-                const url = window.location.href;
+                if (foundQuantities.length > 0) {
+                    debugInfo.push('📊 Found ' + foundQuantities.length + ' quantity indicators');
+                    
+                    foundQuantities.forEach((qty, index) => {
+                        products.push({
+                            name: productName,
+                            styleId: styleId,
+                            sku: styleId + '-variant-' + index,
+                            colorCode: '',
+                            colorName: 'Variant ' + index,
+                            sizeUS: '',
+                            quantity: parseInt(qty.quantity.replace('+', '')) || 0,
+                            rawQuantity: qty.quantity,
+                            available: true,
+                            price: 'See B2B Pricing',
+                            imageUrl: '',
+                            link: window.location.href,
+                            inventoryData: 'Quantity found: ' + qty.quantity,
+                            extractedAt: new Date().toISOString(),
+                            extractionMethod: 'quantity-fallback'
+                        });
+                    });
+                    
+                    debugInfo.push('📦 Created ' + products.length + ' products from quantity fallback');
+                }
                 
-                const skuMatch = url.match(/\/products\/([A-Z0-9]+)/i);
-                const colorMatch = url.match(/colorCode=([^&]+)/i);
-                
-                if (skuMatch || pageTitle.includes('Product') || bodyText.includes('inventory')) {
+                // Method 2: Basic page info if still no products
+                if (products.length === 0) {
+                    debugInfo.push('🔧 Creating basic page record as final fallback');
+                    
                     products.push({
-                        name: pageTitle || 'ASICS B2B Page',
-                        sku: skuMatch ? skuMatch[1] : 'page-extracted',
-                        colorCode: colorMatch ? colorMatch[1] : '',
+                        name: productName,
+                        styleId: styleId,
+                        sku: styleId,
+                        colorCode: '',
                         colorName: '',
                         sizeUS: '',
                         quantity: 0,
-                        rawQuantity: 'Page scan needed',
-                        price: 'See page for details',
+                        rawQuantity: 'Dynamic content scan needed',
+                        available: false,
+                        price: 'See B2B Page',
                         imageUrl: '',
-                        link: url,
-                        inventoryData: bodyText.slice(0, 500),
+                        link: window.location.href,
+                        inventoryData: 'Vue.js page content: ' + document.body.innerText.slice(0, 500),
                         extractedAt: new Date().toISOString(),
-                        extractionMethod: 'page-level-fallback'
+                        extractionMethod: 'vue-js-page-scan'
                     });
-                    debugInfo.push('Created basic page record');
+                    
+                    debugInfo.push('📄 Created basic page record');
                 }
             }
             
-            // Store debug info for retrieval
-            window.asicsExtractionDebug = debugInfo;
+            // Store debug info for analysis
+            window.asicsVueExtractionDebug = debugInfo;
             
-            debugInfo.push('Final extraction completed: ' + products.length + ' products');
+            debugInfo.push('🏁 Vue.js extraction completed: ' + products.length + ' total products');
             return products;
         });
     }
@@ -1771,32 +1760,30 @@ class EnhancedASICSScraper {
 
     async start() {
         try {
-            this.addDebugLog('Starting Enhanced ASICS B2B Scraper v3.0');
+            this.addDebugLog('Starting Enhanced ASICS B2B Scraper v3.1 - Vue.js Master');
             
             // Set default URLs for ASICS B2B
             if (this.urlsToMonitor.length === 0) {
                 this.urlsToMonitor = [
-                    'https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18',
-                    'https://b2b.asics.com/us/en-us/mens-running-shoes',
-                    'https://b2b.asics.com/us/en-us/womens-running-shoes'
+                    'https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18'
                 ];
             }
             
             this.app.listen(this.port, () => {
-                console.log('🥷 Enhanced ASICS B2B Scraper v3.0 running on port ' + this.port);
+                console.log('⚡ Enhanced ASICS B2B Scraper v3.1 - Vue.js Master running on port ' + this.port);
                 console.log('📊 Dashboard available at /dashboard');
-                console.log('🎯 Features: Complete Session Import, Stealth Mode, Browser Fingerprint Bypass');
-                console.log('🚀 Ready for enhanced B2B scraping!');
-                this.addDebugLog('Enhanced server started successfully', { 
+                console.log('🎯 Features: Vue.js Dynamic Content, Inventory Matrix Extraction, Complete Session Import');
+                console.log('🚀 Ready for Vue.js-enhanced B2B scraping!');
+                this.addDebugLog('Enhanced Vue.js server started successfully', { 
                     port: this.port,
-                    version: '3.0-stealth',
-                    features: ['complete-session-import', 'stealth-mode', 'fingerprint-bypass']
+                    version: '3.1-vue-js-master',
+                    features: ['vue-js-dynamic-content', 'inventory-matrix-extraction', 'complete-session-import']
                 });
             });
             
         } catch (error) {
-            this.addDebugLog('Failed to start enhanced scraper', { error: error.message });
-            console.error('❌ Failed to start enhanced scraper:', error);
+            this.addDebugLog('Failed to start Vue.js-enhanced scraper', { error: error.message });
+            console.error('❌ Failed to start Vue.js-enhanced scraper:', error);
             process.exit(1);
         }
     }
@@ -1804,18 +1791,18 @@ class EnhancedASICSScraper {
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    console.log('🛑 Received SIGINT, shutting down enhanced scraper gracefully...');
+    console.log('🛑 Received SIGINT, shutting down Vue.js-enhanced scraper gracefully...');
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-    console.log('🛑 Received SIGTERM, shutting down enhanced scraper gracefully...');
+    console.log('🛑 Received SIGTERM, shutting down Vue.js-enhanced scraper gracefully...');
     process.exit(0);
 });
 
-// Start the enhanced scraper
+// Start the Vue.js-enhanced scraper
 const scraper = new EnhancedASICSScraper();
 scraper.start().catch(error => {
-    console.error('❌ Enhanced startup failed:', error);
+    console.error('❌ Vue.js-enhanced startup failed:', error);
     process.exit(1);
 });
