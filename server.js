@@ -8,7 +8,7 @@ class ASICSManualLoginScraper {
         this.app = express();
         this.port = process.env.PORT || 10000;
         
-        // Debug environment variables
+        // Debug environment variables 
         console.log('🔍 Environment Variables Check:');
         console.log('   NODE_ENV:', process.env.NODE_ENV);
         console.log('   DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
