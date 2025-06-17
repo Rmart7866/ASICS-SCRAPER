@@ -1092,7 +1092,7 @@ class EnhancedDebugScraper {
                         products.push({
                             name: name || 'Unknown Product',
                             price: price || 'Price not available',
-                            sku: sku || \`product-\${index}\`,
+                            sku: sku || `product-${index}`,
                             imageUrl,
                             link,
                             extractedAt: new Date().toISOString()
