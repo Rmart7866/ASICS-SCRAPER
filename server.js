@@ -3,7 +3,7 @@ const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
 const cron = require('node-cron');
 
-class EnhancedDebugScraper {
+class CleanDebugScraper {
     constructor() {
         this.app = express();
         this.port = process.env.PORT || 10000;
@@ -31,7 +31,7 @@ class EnhancedDebugScraper {
         // Browserless configuration with rate limiting
         this.browserlessToken = process.env.BROWSERLESS_TOKEN;
         if (this.browserlessToken) {
-            this.browserlessEndpoint = `wss://production-sfo.browserless.io?token=${this.browserlessToken}`;
+            this.browserlessEndpoint = 'wss://production-sfo.browserless.io?token=' + this.browserlessToken;
         } else {
             this.browserlessEndpoint = 'ws://browserless:3000';
         }
@@ -44,7 +44,7 @@ class EnhancedDebugScraper {
         this.urlsToMonitor = [];
         this.scrapingLogs = [];
         this.scrapingProgress = { active: false, total: 0, completed: 0 };
-        this.debugLogs = []; // Store detailed debug info
+        this.debugLogs = [];
         
         // Rate limiting for Browserless
         this.lastBrowserlessRequest = 0;
@@ -76,7 +76,7 @@ class EnhancedDebugScraper {
             data
         };
         this.debugLogs.unshift(logEntry);
-        console.log(`🐛 DEBUG: ${message}`, data ? JSON.stringify(data, null, 2) : '');
+        console.log('🐛 DEBUG: ' + message, data ? JSON.stringify(data, null, 2) : '');
         
         // Keep only last 100 debug logs
         if (this.debugLogs.length > 100) {
@@ -90,7 +90,7 @@ class EnhancedDebugScraper {
         
         if (timeSinceLastRequest < this.minRequestInterval) {
             const waitTime = this.minRequestInterval - timeSinceLastRequest;
-            this.addDebugLog(`Rate limiting: waiting ${waitTime}ms`);
+            this.addDebugLog('Rate limiting: waiting ' + waitTime + 'ms');
             await this.delay(waitTime);
         }
         
@@ -106,7 +106,7 @@ class EnhancedDebugScraper {
         // Health check
         this.app.get('/', (req, res) => {
             res.json({
-                status: 'Enhanced Debug Scraper Active',
+                status: 'Clean Debug Scraper Active',
                 uptime: process.uptime(),
                 urlCount: this.urlsToMonitor.length,
                 sessionValid: this.sessionValid,
@@ -115,15 +115,24 @@ class EnhancedDebugScraper {
             });
         });
 
-        // Enhanced Dashboard with debugging
+        // Dashboard
         this.app.get('/dashboard', (req, res) => {
-            res.send(`
+            const sessionStatusClass = this.sessionValid ? 'success' : 'danger';
+            const sessionStatusText = this.sessionValid ? '✅ Session Valid' : '❌ No Session';
+            
+            const urlListHtml = this.urlsToMonitor.map((url, index) => {
+                return '<li class="url-item"><span style="word-break: break-all; font-size: 11px;">' + 
+                       url + '</span><button onclick="removeUrl(' + index + 
+                       ')" class="btn danger">❌</button></li>';
+            }).join('');
+
+            const dashboardHtml = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Debug ASICS Scraper</title>
+    <title>Clean Debug ASICS Scraper</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; }
@@ -156,11 +165,11 @@ class EnhancedDebugScraper {
 <body>
     <div class="container">
         <div class="header">
-            <h1>🐛 Enhanced Debug ASICS Scraper</h1>
+            <h1>🐛 Clean Debug ASICS Scraper</h1>
             <p>Cookie-based authentication with extensive debugging</p>
             <div style="margin-top: 15px;">
-                <span class="btn ${this.sessionValid ? 'success' : 'danger'}" style="cursor: default;">
-                    ${this.sessionValid ? '✅ Session Valid' : '❌ No Session'}
+                <span class="btn ${sessionStatusClass}" style="cursor: default;">
+                    ${sessionStatusText}
                 </span>
                 <span class="btn" style="background: #6c757d; cursor: default;">
                     ${this.sessionCookies.length} Cookies
@@ -194,12 +203,7 @@ class EnhancedDebugScraper {
                 
                 <h4 style="margin-top: 15px;">URLs (${this.urlsToMonitor.length}):</h4>
                 <ul id="urlList" class="url-list">
-                    ${this.urlsToMonitor.map((url, index) => `
-                        <li class="url-item">
-                            <span style="word-break: break-all; font-size: 11px;">${url}</span>
-                            <button onclick="removeUrl(${index})" class="btn danger">❌</button>
-                        </li>
-                    `).join('')}
+                    ${urlListHtml}
                 </ul>
             </div>
 
@@ -274,27 +278,16 @@ class EnhancedDebugScraper {
                 const result = await response.json();
                 
                 if (result.success) {
-                    resultDiv.innerHTML = \`
-                        <div class="success" style="padding: 10px; margin-top: 10px;">
-                            ✅ Set \${result.cookieCount} cookies<br>
-                            Session valid: \${result.sessionValid ? 'Yes' : 'No'}<br>
-                            <small>\${result.testResult}</small>
-                        </div>
-                    \`;
+                    resultDiv.innerHTML = '<div class="success" style="padding: 10px; margin-top: 10px;">✅ Set ' + result.cookieCount + ' cookies<br>Session valid: ' + (result.sessionValid ? 'Yes' : 'No') + '<br><small>' + result.testResult + '</small></div>';
                     
                     if (result.sessionValid) {
                         setTimeout(() => location.reload(), 2000);
                     }
                 } else {
-                    resultDiv.innerHTML = \`
-                        <div class="danger" style="padding: 10px; margin-top: 10px;">
-                            ❌ Failed: \${result.error}<br>
-                            <small>Check debug logs for details</small>
-                        </div>
-                    \`;
+                    resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Failed: ' + result.error + '<br><small>Check debug logs for details</small></div>';
                 }
             } catch (error) {
-                resultDiv.innerHTML = \`<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Error: \${error.message}</div>\`;
+                resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Error: ' + error.message + '</div>';
             }
         }
 
@@ -306,14 +299,9 @@ class EnhancedDebugScraper {
                 const response = await fetch('/api/test-session');
                 const result = await response.json();
                 
-                resultDiv.innerHTML = \`
-                    <div class="\${result.success ? 'success' : 'danger'}" style="padding: 10px; margin-top: 10px;">
-                        \${result.success ? '✅' : '❌'} \${result.message}<br>
-                        <small>Cookies: \${result.cookieCount || 0}</small>
-                    </div>
-                \`;
+                resultDiv.innerHTML = '<div class="' + (result.success ? 'success' : 'danger') + '" style="padding: 10px; margin-top: 10px;">' + (result.success ? '✅' : '❌') + ' ' + result.message + '<br><small>Cookies: ' + (result.cookieCount || 0) + '</small></div>';
             } catch (error) {
-                resultDiv.innerHTML = \`<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Error: \${error.message}</div>\`;
+                resultDiv.innerHTML = '<div class="danger" style="padding: 10px; margin-top: 10px;">❌ Error: ' + error.message + '</div>';
             }
         }
 
@@ -346,18 +334,13 @@ class EnhancedDebugScraper {
                 const result = await response.json();
                 
                 if (result.success) {
-                    statusDiv.innerHTML = \`
-                        <div class="success" style="padding: 10px;">
-                            ✅ Debug completed<br>
-                            <small>Found \${result.productCount} products. Check debug logs for details.</small>
-                        </div>
-                    \`;
+                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Debug completed<br><small>Found ' + result.productCount + ' products. Check debug logs for details.</small></div>';
                     refreshDebugLogs();
                 } else {
-                    statusDiv.innerHTML = \`<div class="danger" style="padding: 10px;">❌ Debug failed: \${result.error}</div>\`;
+                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Debug failed: ' + result.error + '</div>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = \`<div class="danger" style="padding: 10px;">❌ Error: \${error.message}</div>\`;
+                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error: ' + error.message + '</div>';
             }
         }
 
@@ -374,10 +357,10 @@ class EnhancedDebugScraper {
                     statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Scraping started!</div>';
                     pollProgress();
                 } else {
-                    statusDiv.innerHTML = \`<div class="danger" style="padding: 10px;">❌ Failed: \${result.error}</div>\`;
+                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Failed: ' + result.error + '</div>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = \`<div class="danger" style="padding: 10px;">❌ Error: \${error.message}</div>\`;
+                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error: ' + error.message + '</div>';
             }
         }
 
@@ -388,14 +371,7 @@ class EnhancedDebugScraper {
                 
                 if (data.active) {
                     const progress = (data.completed / data.total) * 100;
-                    document.getElementById('progressBar').innerHTML = \`
-                        <div style="background: #f0f0f0; border-radius: 4px; padding: 5px;">
-                            <div style="background: #28a745; height: 20px; width: \${progress}%; border-radius: 4px; transition: width 0.3s;"></div>
-                            <div style="text-align: center; margin-top: 5px; font-size: 12px;">
-                                \${data.completed} of \${data.total} URLs (\${Math.round(progress)}%)
-                            </div>
-                        </div>
-                    \`;
+                    document.getElementById('progressBar').innerHTML = '<div style="background: #f0f0f0; border-radius: 4px; padding: 5px;"><div style="background: #28a745; height: 20px; width: ' + progress + '%; border-radius: 4px; transition: width 0.3s;"></div><div style="text-align: center; margin-top: 5px; font-size: 12px;">' + data.completed + ' of ' + data.total + ' URLs (' + Math.round(progress) + '%)</div></div>';
                     
                     if (data.completed < data.total) {
                         setTimeout(pollProgress, 3000);
@@ -439,7 +415,7 @@ class EnhancedDebugScraper {
             if (!confirm('Remove this URL?')) return;
 
             try {
-                const response = await fetch(\`/api/urls/\${index}\`, { method: 'DELETE' });
+                const response = await fetch('/api/urls/' + index, { method: 'DELETE' });
                 const result = await response.json();
                 if (result.success) location.reload();
             } catch (error) {
@@ -454,14 +430,7 @@ class EnhancedDebugScraper {
                 
                 const logsContainer = document.getElementById('logs');
                 if (logs.length > 0) {
-                    logsContainer.innerHTML = logs.map(log => \`
-                        <div style="margin: 5px 0; padding: 8px; border-left: 3px solid \${log.status === 'success' ? '#28a745' : '#dc3545'};">
-                            <strong>\${new Date(log.timestamp).toLocaleString()}:</strong><br>
-                            URL: \${log.url}<br>
-                            Status: \${log.status} | Products: \${log.productCount || 0}<br>
-                            \${log.error ? 'Error: ' + log.error : ''}
-                        </div>
-                    \`).join('');
+                    logsContainer.innerHTML = logs.map(log => '<div style="margin: 5px 0; padding: 8px; border-left: 3px solid ' + (log.status === 'success' ? '#28a745' : '#dc3545') + ';"><strong>' + new Date(log.timestamp).toLocaleString() + ':</strong><br>URL: ' + log.url + '<br>Status: ' + log.status + ' | Products: ' + (log.productCount || 0) + '<br>' + (log.error ? 'Error: ' + log.error : '') + '</div>').join('');
                 } else {
                     logsContainer.innerHTML = '<div style="color: #666;">No logs available yet.</div>';
                 }
@@ -477,12 +446,7 @@ class EnhancedDebugScraper {
                 
                 const debugContainer = document.getElementById('debugLogs');
                 if (logs.length > 0) {
-                    debugContainer.innerHTML = logs.map(log => \`
-                        <div style="margin: 3px 0; padding: 5px; border-left: 2px solid #007bff;">
-                            <strong>\${new Date(log.timestamp).toLocaleString()}:</strong> \${log.message}<br>
-                            \${log.data ? '<pre style="font-size: 9px; margin: 3px 0;">' + JSON.stringify(log.data, null, 2) + '</pre>' : ''}
-                        </div>
-                    \`).join('');
+                    debugContainer.innerHTML = logs.map(log => '<div style="margin: 3px 0; padding: 5px; border-left: 2px solid #007bff;"><strong>' + new Date(log.timestamp).toLocaleString() + ':</strong> ' + log.message + '<br>' + (log.data ? '<pre style="font-size: 9px; margin: 3px 0;">' + JSON.stringify(log.data, null, 2) + '</pre>' : '') + '</div>').join('');
                 } else {
                     debugContainer.innerHTML = '<div style="color: #666;">No debug logs available.</div>';
                 }
@@ -525,10 +489,12 @@ class EnhancedDebugScraper {
     </script>
 </body>
 </html>
-            `);
+            `;
+            
+            res.send(dashboardHtml);
         });
 
-        // Enhanced API Routes with debugging
+        // API Routes
         this.app.post('/api/set-cookies', async (req, res) => {
             try {
                 this.addDebugLog('API: Setting cookies');
@@ -764,23 +730,26 @@ class EnhancedDebugScraper {
                 const trimmed = pair.trim();
                 
                 if (trimmed) {
-                    const [name, ...valueParts] = trimmed.split('=');
-                    const value = valueParts.join('=');
-                    
-                    if (name && value && name.trim() !== '' && value.trim() !== '') {
-                        const cookie = {
-                            name: name.trim(),
-                            value: value.trim(),
-                            domain: '.asics.com',
-                            path: '/',
-                            httpOnly: false,
-                            secure: true,
-                            sameSite: 'Lax'
-                        };
+                    const equalIndex = trimmed.indexOf('=');
+                    if (equalIndex > 0) {
+                        const name = trimmed.substring(0, equalIndex).trim();
+                        const value = trimmed.substring(equalIndex + 1).trim();
                         
-                        cookies.push(cookie);
-                    } else {
-                        this.addDebugLog('Skipped invalid cookie pair', { index: i, pair: trimmed.slice(0, 50) });
+                        if (name && value) {
+                            const cookie = {
+                                name: name,
+                                value: value,
+                                domain: '.asics.com',
+                                path: '/',
+                                httpOnly: false,
+                                secure: true,
+                                sameSite: 'Lax'
+                            };
+                            
+                            cookies.push(cookie);
+                        } else {
+                            this.addDebugLog('Skipped invalid cookie pair', { index: i, pair: trimmed.slice(0, 50) });
+                        }
                     }
                 }
             }
@@ -1037,15 +1006,15 @@ class EnhancedDebugScraper {
             let productElements = [];
             for (const selector of productSelectors) {
                 const elements = document.querySelectorAll(selector);
-                debugInfo.push(`Selector "${selector}": ${elements.length} elements`);
+                debugInfo.push('Selector "' + selector + '": ' + elements.length + ' elements');
                 if (elements.length > 0 && productElements.length === 0) {
                     productElements = Array.from(elements);
-                    debugInfo.push(`Using selector: ${selector}`);
+                    debugInfo.push('Using selector: ' + selector);
                     break;
                 }
             }
             
-            debugInfo.push(`Total product elements found: ${productElements.length}`);
+            debugInfo.push('Total product elements found: ' + productElements.length);
             
             // Extract data from each product element
             productElements.forEach((element, index) => {
@@ -1092,16 +1061,16 @@ class EnhancedDebugScraper {
                         products.push({
                             name: name || 'Unknown Product',
                             price: price || 'Price not available',
-                            sku: sku || `product-${index}`,
+                            sku: sku || 'product-' + index,
                             imageUrl,
                             link,
                             extractedAt: new Date().toISOString()
                         });
                         
-                        debugInfo.push(`Product ${index + 1}: name="${name}" price="${price}" sku="${sku}"`);
+                        debugInfo.push('Product ' + (index + 1) + ': name="' + name + '" price="' + price + '" sku="' + sku + '"');
                     }
                 } catch (productError) {
-                    debugInfo.push(`Error processing product ${index}: ${productError.message}`);
+                    debugInfo.push('Error processing product ' + index + ': ' + productError.message);
                 }
             });
             
@@ -1134,9 +1103,9 @@ class EnhancedDebugScraper {
 
     async startScraping() {
         const startTime = Date.now();
-        const batchId = `enhanced_${Date.now()}`;
+        const batchId = 'clean_' + Date.now();
         
-        this.addDebugLog('Starting enhanced scraping session', { 
+        this.addDebugLog('Starting clean scraping session', { 
             urlCount: this.urlsToMonitor.length,
             batchId 
         });
@@ -1148,7 +1117,7 @@ class EnhancedDebugScraper {
                 const url = this.urlsToMonitor[i];
                 
                 try {
-                    this.addDebugLog(`Scraping URL ${i + 1}/${this.urlsToMonitor.length}`, { url });
+                    this.addDebugLog('Scraping URL ' + (i + 1) + '/' + this.urlsToMonitor.length, { url });
                     
                     // Rate limit between requests
                     if (i > 0) {
@@ -1170,13 +1139,13 @@ class EnhancedDebugScraper {
                     results.push(scrapingResult);
                     this.scrapingLogs.unshift(scrapingResult);
                     
-                    this.addDebugLog(`Scraped ${result.products.length} products from ${url}`);
+                    this.addDebugLog('Scraped ' + result.products.length + ' products from ' + url);
                     
                     // Update progress
                     this.scrapingProgress.completed = i + 1;
                     
                 } catch (urlError) {
-                    this.addDebugLog(`Failed to scrape ${url}`, { error: urlError.message });
+                    this.addDebugLog('Failed to scrape ' + url, { error: urlError.message });
                     
                     const errorResult = {
                         url,
@@ -1200,7 +1169,7 @@ class EnhancedDebugScraper {
             
             const duration = Math.round((Date.now() - startTime) / 1000);
             this.addDebugLog('Scraping session completed', { 
-                duration: `${duration}s`,
+                duration: duration + 's',
                 totalResults: results.length,
                 successCount: results.filter(r => r.status === 'success').length
             });
@@ -1221,35 +1190,34 @@ class EnhancedDebugScraper {
             this.addDebugLog('Saving results to database', { count: results.length });
             
             for (const result of results) {
-                // Check if column exists first
                 try {
-                    await this.pool.query(\`
-                        INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                    `, [
-                        result.batchId,
-                        result.url,
-                        result.status,
-                        result.productCount,
-                        result.error || null,
-                        result.timestamp
-                    ]);
-                } catch (dbError) {
-                    if (dbError.message.includes('column "url" of relation "scrape_logs" does not exist')) {
-                        this.addDebugLog('Database schema issue - updating table');
-                        await this.updateDatabaseSchema();
-                        // Retry the insert
-                        await this.pool.query(`
-                            INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at)
-                            VALUES ($1, $2, $3, $4, $5, $6)
-                        `, [
+                    await this.pool.query(
+                        'INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+                        [
                             result.batchId,
                             result.url,
                             result.status,
                             result.productCount,
                             result.error || null,
                             result.timestamp
-                        ]);
+                        ]
+                    );
+                } catch (dbError) {
+                    if (dbError.message.includes('column') && dbError.message.includes('does not exist')) {
+                        this.addDebugLog('Database schema issue - updating table');
+                        await this.updateDatabaseSchema();
+                        // Retry the insert
+                        await this.pool.query(
+                            'INSERT INTO scrape_logs (batch_id, url, status, product_count, error_message, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+                            [
+                                result.batchId,
+                                result.url,
+                                result.status,
+                                result.productCount,
+                                result.error || null,
+                                result.timestamp
+                            ]
+                        );
                     } else {
                         throw dbError;
                     }
@@ -1282,7 +1250,6 @@ class EnhancedDebugScraper {
         }
     }
 
-    // Database methods (same as before but with debug logging)
     async saveUrlsToDatabase() {
         if (!this.databaseEnabled || !this.pool) return;
 
@@ -1338,25 +1305,13 @@ class EnhancedDebugScraper {
             this.addDebugLog('Database connection successful');
             
             // Create tables with all necessary columns
-            await this.pool.query(`
-                CREATE TABLE IF NOT EXISTS monitored_urls (
-                    id SERIAL PRIMARY KEY,
-                    url VARCHAR(1000) NOT NULL UNIQUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
+            await this.pool.query(
+                'CREATE TABLE IF NOT EXISTS monitored_urls (id SERIAL PRIMARY KEY, url VARCHAR(1000) NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'
+            );
             
-            await this.pool.query(`
-                CREATE TABLE IF NOT EXISTS scrape_logs (
-                    id SERIAL PRIMARY KEY,
-                    url VARCHAR(1000),
-                    status VARCHAR(50) DEFAULT 'pending',
-                    product_count INTEGER DEFAULT 0,
-                    error_message TEXT,
-                    batch_id VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
+            await this.pool.query(
+                'CREATE TABLE IF NOT EXISTS scrape_logs (id SERIAL PRIMARY KEY, url VARCHAR(1000), status VARCHAR(50) DEFAULT \'pending\', product_count INTEGER DEFAULT 0, error_message TEXT, batch_id VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)'
+            );
 
             this.addDebugLog('Database initialization completed');
             
@@ -1373,10 +1328,10 @@ class EnhancedDebugScraper {
 
     async start() {
         try {
-            this.addDebugLog('Starting Enhanced Debug ASICS Scraper');
+            this.addDebugLog('Starting Clean Debug ASICS Scraper');
             
             this.app.listen(this.port, () => {
-                console.log(`🐛 Enhanced Debug Scraper running on port ${this.port}`);
+                console.log('🐛 Clean Debug Scraper running on port ' + this.port);
                 console.log('📊 Dashboard available at /dashboard');
                 console.log('🎯 Ready for extensive debugging!');
                 this.addDebugLog('Server started successfully', { port: this.port });
@@ -1401,7 +1356,7 @@ process.on('SIGTERM', () => {
     process.exit(0);
 });
 
-const scraper = new EnhancedDebugScraper();
+const scraper = new CleanDebugScraper();
 scraper.start().catch(error => {
     console.error('❌ Startup failed:', error);
     process.exit(1);
