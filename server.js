@@ -3,23 +3,14 @@ async function exportDebugLogs() {
                 const response = await fetch('/api/debug-logs');
                 const logs = await response.json();
                 
-                if (logs && logs.length > 0) {
-                    const jsonContent = JSON.stringify(logs, null, 2);
-                    const blob = new Blob([jsonContent], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'asics-scraper-debug-logs-' + new Date().toISOString().split('T')[0] + '.json';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    alert('✅ Debug logs exported!');
-                } else {
-                    alert('❌ No debug logs to export');
-                }
+                const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'asics-scraper-debug-logs.json';
+                a.click();
+                URL.revokeObjectURL(url);
             } catch (error) {
-                console.error('Export error:', error);
                 alert('Error exporting logs: ' + error.message);
             }
         }
@@ -92,18 +83,12 @@ async function exportDebugLogs() {
         }
 
         function convertToCSV(products) {
-            const headers = ['Product Name', 'Style ID', 'Color Code', 'Color Name', 'Size US', 'Quantity', 'Raw Quantity', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Extracted At'];
+            const headers = ['Name', 'SKU', 'Price', 'Source URL', 'Product Link', 'Image URL', 'Scraped At'];
             let csv = headers.join(',') + '\\n';
             
             products.forEach(product => {
                 const row = [
-                    '"' + (product.productName || product.name || '').replace(/"/g, '""') + '"',
-                    '"' + (product.styleId || '').replace(/"/g, '""') + '"',
-                    '"' + (product.colorCode || '').replace(/"/g, '""') + '"',
-                    '"' + (product.colorName || '').replace(/"/g, '""') + '"',
-                    '"' + (product.sizeUS || '').replace(/"/g, '""') + '"',
-                    (product.quantity || 0),
-                    '"' + (product.rawQuantity || '').replace(/"/g, '""') + '"',
+                    '"' + (product.name || '').replace(/"/g, '""') + '"',
                     '"' + (product.sku || '').replace(/"/g, '""') + '"',
                     '"' + (product.price || '').replace(/"/g, '""') + '"',
                     '"' + (product.sourceUrl || '').replace(/"/g, '""') + '"',
@@ -115,190 +100,6 @@ async function exportDebugLogs() {
             });
             
             return csv;
-        }
-
-        async function testWorkingUrls() {
-            const testUrls = [
-                'https://b2b.asics.com/',
-                'https://b2b.asics.com/us',
-                'https://b2b.asics.com/us/en-us',
-                'https://b2b.asics.com/us/en-us/products',
-                'https://b2b.asics.com/us/en-us/catalog',
-                'https://b2b.asics.com/us/en-us/orders',
-                'https://b2b.asics.com/dashboard',
-                'https://b2b.asics.com/products'
-            ];
-            
-            const results = [];
-            
-            for (let url of testUrls) {
-                console.log('Testing URL: ' + url);
-                
-                try {
-                    const response = await fetch('/api/debug-page', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url })
-                    });
-                    
-                    const result = await response.json();
-                    console.log('Result for ' + url + ':', result);
-                    
-                    if (result.success) {
-                        results.push({
-                            url: url,
-                            title: result.title || 'Unknown',
-                            productCount: result.productCount || 0,
-                            status: 'Success'
-                        });
-                    } else {
-                        results.push({
-                            url: url,
-                            title: 'Error',
-                            productCount: 0,
-                            status: result.error || 'Failed'
-                        });
-                    }
-                } catch (error) {
-                    console.error('Error testing ' + url + ':', error);
-                    results.push({
-                        url: url,
-                        title: 'Network Error',
-                        productCount: 0,
-                        status: error.message
-                    });
-                }
-                
-                // Wait between tests to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 3000));
-            }
-            
-            // Show results in a modal
-            showUrlTestResults(results);
-            refreshDebugLogs();
-        }
-
-        function showUrlTestResults(results) {
-            const modal = document.createElement('div');
-            modal.style.cssText = 'position: fixed; top: 10%; left: 10%; width: 80%; height: 80%; background: white; border: 2px solid #007bff; padding: 20px; z-index: 10000; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); overflow-y: auto;';
-            
-            let html = '<h3>🧪 URL Test Results</h3><table style="width: 100%; border-collapse: collapse; margin: 20px 0;"><tr style="background: #f0f0f0;"><th style="border: 1px solid #ddd; padding: 8px;">URL</th><th style="border: 1px solid #ddd; padding: 8px;">Page Title</th><th style="border: 1px solid #ddd; padding: 8px;">Products</th><th style="border: 1px solid #ddd; padding: 8px;">Status</th></tr>';
-            
-            results.forEach(result => {
-                const statusColor = result.status === 'Success' ? '#28a745' : '#dc3545';
-                html += '<tr><td style="border: 1px solid #ddd; padding: 8px; font-family: monospace; font-size: 11px;">' + result.url + '</td><td style="border: 1px solid #ddd; padding: 8px;">' + result.title + '</td><td style="border: 1px solid #ddd; padding: 8px; text-align: center;">' + result.productCount + '</td><td style="border: 1px solid #ddd; padding: 8px; color: ' + statusColor + ';">' + result.status + '</td></tr>';
-            });
-            
-            html += '</table>';
-            
-            // Add instructions
-            html += '<div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0;"><h4>💡 Next Steps:</h4><ul><li><strong>Look for URLs that return valid page titles</strong> (not "Not Found")</li><li><strong>Try those URLs in your browser first</strong> to confirm they work</li><li><strong>Use working URLs for scraping</strong></li><li><strong>Check your ASICS B2B portal</strong> for the correct URL structure</li></ul></div>';
-            
-            const closeButton = document.createElement('button');
-            closeButton.textContent = 'Close';
-            closeButton.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
-            closeButton.onclick = function() { modal.remove(); };
-            
-            modal.innerHTML = html;
-            modal.appendChild(closeButton);
-            document.body.appendChild(modal);
-        }
-
-        function refreshCookies() {
-            const modal = document.createElement('div');
-            modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 2px solid #007bff; padding: 30px; z-index: 10000; max-width: 80%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
-            
-            const modalContent = document.createElement('div');
-            modalContent.innerHTML = '<h3>🔄 How to Get Fresh Session Cookies</h3>' +
-                '<ol style="text-align: left; margin: 20px 0;">' +
-                '<li><strong>Open ASICS B2B</strong> in a new tab: <a href="https://b2b.asics.com" target="_blank">https://b2b.asics.com</a></li>' +
-                '<li><strong>Log in completely</strong> and navigate to any product page</li>' +
-                '<li><strong>Press F12</strong> → Console tab</li>' +
-                '<li><strong>Paste this code:</strong><br><code style="background: #f0f0f0; padding: 5px; display: block; margin: 5px 0;">document.cookie.split(";").map(c => c.trim()).join("; ")</code></li>' +
-                '<li><strong>Copy the result</strong> and paste it in the Session Cookies field above</li>' +
-                '<li><strong>Click "🍪 Set Session"</strong></li>' +
-                '</ol>';
-            
-            const closeButton = document.createElement('button');
-            closeButton.textContent = 'Got it!';
-            closeButton.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
-            closeButton.onclick = function() { modal.remove(); };
-            
-            modalContent.appendChild(closeButton);
-            modal.appendChild(modalContent);
-            document.body.appendChild(modal);
-        }
-
-        async function testYourWorkingUrl() {
-            // Test the specific URL that works with the Chrome extension
-            const workingUrl = 'https://b2b.asics.com/orders/100454100/products/1013A142?deliveryDate=2025-06-18';
-            
-            const statusDiv = document.getElementById('scrapingStatus');
-            statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🧪 Testing your working URL: ' + workingUrl + '</div>';
-            
-            try {
-                const response = await fetch('/api/debug-page', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: workingUrl })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Working URL test completed!<br><small>Found ' + result.productCount + ' products. Check debug logs for ASICS inventory data.</small></div>';
-                    
-                    // Also add this URL to the list if it's not already there
-                    document.getElementById('newUrl').value = workingUrl;
-                    
-                    refreshDebugLogs();
-                } else {
-                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Working URL test failed: ' + result.error + '<br><small>This might be a session/authentication issue.</small></div>';
-                }
-            } catch (error) {
-                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error testing working URL: ' + error.message + '</div>';
-            }
-        }
-
-        function findWorkingUrls() {
-            const modal = document.createElement('div');
-            modal.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border: 2px solid #007bff; padding: 30px; z-index: 10000; max-width: 80%; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
-            
-            const modalContent = document.createElement('div');
-            modalContent.innerHTML = '<h3>🔍 How to Find Working ASICS URLs</h3>' +
-                '<div style="text-align: left; margin: 20px 0;">' +
-                '<h4>Method 1: Use Your Browser</h4>' +
-                '<ol style="margin: 10px 0 10px 20px;">' +
-                '<li>Open ASICS B2B in a new tab and log in</li>' +
-                '<li>Navigate to any product or order page that works</li>' +
-                '<li>Copy the URL from the address bar</li>' +
-                '<li>Make sure the page shows inventory/product data</li>' +
-                '<li>Use that URL in the scraper</li>' +
-                '</ol>' +
-                '<h4>Method 2: Check Your Browser Network Tab</h4>' +
-                '<ol style="margin: 10px 0 10px 20px;">' +
-                '<li>Press F12 → Network tab in ASICS B2B</li>' +
-                '<li>Navigate to a product page</li>' +
-                '<li>Look for API calls that return product data</li>' +
-                '<li>Try those endpoint URLs in the scraper</li>' +
-                '</ol>' +
-                '<h4>Common ASICS B2B URL Patterns:</h4>' +
-                '<ul style="margin: 10px 0 10px 20px; font-family: monospace; font-size: 12px;">' +
-                '<li>https://b2b.asics.com/orders/[ORDER_ID]/products/[PRODUCT_ID]</li>' +
-                '<li>https://b2b.asics.com/catalog/products/[PRODUCT_ID]</li>' +
-                '<li>https://b2b.asics.com/inventory/[PRODUCT_ID]</li>' +
-                '<li>https://b2b.asics.com/dashboard</li>' +
-                '</ul>' +
-                '</div>';
-            
-            const closeButton = document.createElement('button');
-            closeButton.textContent = 'Got it!';
-            closeButton.style.cssText = 'margin-top: 15px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;';
-            closeButton.onclick = function() { modal.remove(); };
-            
-            modalContent.appendChild(closeButton);
-            modal.appendChild(modalContent);
-            document.body.appendChild(modal);
         }const express = require('express');
 const puppeteer = require('puppeteer-core');
 const { Pool } = require('pg');
@@ -514,7 +315,6 @@ class CleanDebugScraper {
                     ▶️ Start Scraping
                 </button>
                 <button onclick="debugSinglePage()" class="btn info">🐛 Debug Single Page</button>
-                <button onclick="testYourWorkingUrl()" class="btn success">🧪 Test Your Working URL</button>
                 <button onclick="exportDebugLogs()" class="btn">📋 Export Debug Logs</button>
                 <button onclick="exportResults()" class="btn">📄 Export Results CSV</button>
                 <button onclick="viewAllResults()" class="btn">👁️ View All Results</button>
@@ -623,25 +423,11 @@ class CleanDebugScraper {
         }
 
         async function debugSinglePage() {
-            // Get the URL from the input field, or use the first monitored URL if available
-            let url = document.getElementById('newUrl').value.trim();
-            
-            if (!url) {
-                // If no URL in input, try to get from the URL list
-                const urlListItems = document.querySelectorAll('.url-item .url-text');
-                if (urlListItems.length > 0) {
-                    url = urlListItems[0].textContent.trim();
-                    document.getElementById('newUrl').value = url;
-                } else {
-                    alert('❌ Please enter a URL to debug, or add URLs to the URL list first.');
-                    return;
-                }
-            }
-            
+            const url = document.getElementById('newUrl').value.trim() || 'https://b2b.asics.com/us/en-us';
             const statusDiv = document.getElementById('scrapingStatus');
             
             try {
-                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🐛 Debugging: ' + url + '</div>';
+                statusDiv.innerHTML = '<div class="info" style="padding: 10px;">🐛 Debugging single page...</div>';
                 
                 const response = await fetch('/api/debug-page', {
                     method: 'POST',
@@ -652,13 +438,13 @@ class CleanDebugScraper {
                 const result = await response.json();
                 
                 if (result.success) {
-                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Debug completed for: ' + url + '<br><small>Found ' + result.productCount + ' products. Check debug logs for details.</small></div>';
+                    statusDiv.innerHTML = '<div class="success" style="padding: 10px;">✅ Debug completed<br><small>Found ' + result.productCount + ' products. Check debug logs for details.</small></div>';
                     refreshDebugLogs();
                 } else {
-                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Debug failed for: ' + url + '<br><small>' + result.error + '</small></div>';
+                    statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Debug failed: ' + result.error + '</div>';
                 }
             } catch (error) {
-                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error debugging: ' + url + '<br><small>' + error.message + '</small></div>';
+                statusDiv.innerHTML = '<div class="danger" style="padding: 10px;">❌ Error: ' + error.message + '</div>';
             }
         }
 
@@ -1212,8 +998,18 @@ class CleanDebugScraper {
             this.addDebugLog('Browser connected, creating new page');
             const page = await browser.newPage();
             
-            // Set user agent
+            // Set user agent to match what works with the extension
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            
+            // Set additional headers that might be needed for B2B access
+            await page.setExtraHTTPHeaders({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            });
             
             // Validate and set cookies
             this.addDebugLog('Setting cookies', { count: this.sessionCookies.length });
@@ -1234,57 +1030,123 @@ class CleanDebugScraper {
             await page.setCookie(...validCookies);
             this.addDebugLog('Cookies set successfully', { validCount: validCookies.length });
             
-            // Navigate to test page
-            this.addDebugLog('Navigating to ASICS B2B test page');
-            await page.goto('https://b2b.asics.com/us/en-us', { 
+            // First, navigate to the main B2B portal to establish context
+            this.addDebugLog('Establishing B2B session context');
+            await page.goto('https://b2b.asics.com/', { 
                 waitUntil: 'domcontentloaded', 
                 timeout: 30000 
             });
             
-            // Wait for page to load
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(2000);
             
-            // Analyze page content
-            const result = await page.evaluate(() => {
-                const url = window.location.href;
-                const title = document.title;
-                const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+            // Now test with a similar order URL to what you provided
+            this.addDebugLog('Testing order page access');
+            const testOrderUrl = 'https://b2b.asics.com/orders/100454100/products/1011B875?colorCode=600&deliveryDate=2025-06-18';
+            
+            try {
+                await page.goto(testOrderUrl, { 
+                    waitUntil: 'domcontentloaded', 
+                    timeout: 30000 
+                });
                 
-                const hasLoginForm = document.querySelector('input[type="password"]') !== null;
-                const urlHasLogin = url.includes('login') || url.includes('authentication');
-                const bodyHasLoginText = bodyText.includes('sign in') || bodyText.includes('log in') || bodyText.includes('password');
+                await page.waitForTimeout(3000);
                 
-                const isLoggedIn = !hasLoginForm && !urlHasLogin && !bodyHasLoginText;
+                // Analyze the result
+                const result = await page.evaluate(() => {
+                    const url = window.location.href;
+                    const title = document.title;
+                    const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                    
+                    const hasLoginForm = document.querySelector('input[type="password"]') !== null;
+                    const urlHasLogin = url.includes('login') || url.includes('authentication');
+                    const bodyHasLoginText = bodyText.includes('sign in') || bodyText.includes('log in') || bodyText.includes('password');
+                    
+                    // Check for order/product specific content
+                    const hasOrderContent = bodyText.includes('order') || bodyText.includes('product') || bodyText.includes('inventory');
+                    const hasQuantityInfo = bodyText.includes('quantity') || bodyText.includes('available') || bodyText.includes('stock');
+                    
+                    const isLoggedIn = !hasLoginForm && !urlHasLogin && !bodyHasLoginText;
+                    const hasOrderAccess = isLoggedIn && (hasOrderContent || hasQuantityInfo);
+                    
+                    return {
+                        url,
+                        title,
+                        isLoggedIn,
+                        hasOrderAccess,
+                        hasLoginForm,
+                        urlHasLogin,
+                        bodyHasLoginText,
+                        hasOrderContent,
+                        hasQuantityInfo,
+                        bodyPreview: bodyText.slice(0, 500)
+                    };
+                });
                 
-                return {
-                    url,
-                    title,
-                    isLoggedIn,
-                    hasLoginForm,
-                    urlHasLogin,
-                    bodyHasLoginText,
-                    bodyPreview: bodyText.slice(0, 300)
-                };
-            });
-            
-            await browser.close();
-            
-            this.addDebugLog('Session test analysis completed', result);
-            
-            if (result.isLoggedIn) {
-                this.addDebugLog('Session validation: SUCCESS');
-                return {
-                    valid: true,
-                    message: 'Session is active and working! Ready to scrape.',
-                    details: result
-                };
-            } else {
-                this.addDebugLog('Session validation: FAILED', result);
-                return {
-                    valid: false,
-                    message: 'Session appears to be expired or invalid. Please get fresh cookies.',
-                    details: result
-                };
+                await browser.close();
+                
+                this.addDebugLog('Order page test completed', result);
+                
+                if (result.isLoggedIn && result.hasOrderAccess) {
+                    this.addDebugLog('Session validation: SUCCESS - Order access confirmed');
+                    return {
+                        valid: true,
+                        message: 'Session is active with order access! Ready to scrape order pages.',
+                        details: result
+                    };
+                } else if (result.isLoggedIn) {
+                    this.addDebugLog('Session validation: PARTIAL - Logged in but no order access');
+                    return {
+                        valid: true,
+                        message: 'Session is active but may need order context. Try fresh order URLs.',
+                        details: result
+                    };
+                } else {
+                    this.addDebugLog('Session validation: FAILED', result);
+                    return {
+                        valid: false,
+                        message: 'Session appears expired or invalid. Please get fresh cookies.',
+                        details: result
+                    };
+                }
+                
+            } catch (orderError) {
+                this.addDebugLog('Order URL test failed, trying basic B2B access', { error: orderError.message });
+                
+                // Fallback to basic test
+                const basicResult = await page.evaluate(() => {
+                    const url = window.location.href;
+                    const title = document.title;
+                    const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                    
+                    const hasLoginForm = document.querySelector('input[type="password"]') !== null;
+                    const urlHasLogin = url.includes('login') || url.includes('authentication');
+                    const bodyHasLoginText = bodyText.includes('sign in') || bodyText.includes('log in');
+                    
+                    const isLoggedIn = !hasLoginForm && !urlHasLogin && !bodyHasLoginText;
+                    
+                    return {
+                        url,
+                        title,
+                        isLoggedIn,
+                        bodyPreview: bodyText.slice(0, 300)
+                    };
+                });
+                
+                await browser.close();
+                
+                if (basicResult.isLoggedIn) {
+                    return {
+                        valid: true,
+                        message: 'Basic session active, but order URLs may need fresh context.',
+                        details: basicResult
+                    };
+                } else {
+                    return {
+                        valid: false,
+                        message: 'Session test failed. Please get fresh cookies.',
+                        details: basicResult
+                    };
+                }
             }
             
         } catch (error) {
@@ -1303,102 +1165,78 @@ class CleanDebugScraper {
             
             await this.rateLimitedBrowserlessRequest();
             
-            this.addDebugLog('Connecting to browser for page debug');
             const browser = await puppeteer.connect({
                 browserWSEndpoint: this.browserlessEndpoint,
                 ignoreHTTPSErrors: true
             });
             
-            this.addDebugLog('Creating new page for debugging');
             const page = await browser.newPage();
-            
-            // Set shorter timeout and add more detailed error handling
-            page.setDefaultTimeout(20000); // 20 second timeout
-            
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             
+            // Set additional headers for B2B access
+            await page.setExtraHTTPHeaders({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Cache-Control': 'no-cache'
+            });
+            
             // Set session cookies
-            this.addDebugLog('Setting session cookies for page debug');
-            try {
-                await page.setCookie(...this.sessionCookies);
-                this.addDebugLog('Cookies set successfully for page debug');
-            } catch (cookieError) {
-                this.addDebugLog('Error setting cookies', { error: cookieError.message });
+            await page.setCookie(...this.sessionCookies);
+            this.addDebugLog('Cookies set successfully for page debug');
+            
+            // If this is an order URL, first establish session context
+            if (url.includes('/orders/')) {
+                this.addDebugLog('Order URL detected, establishing session context');
+                
+                try {
+                    // First visit the main B2B portal
+                    await page.goto('https://b2b.asics.com/', { 
+                        waitUntil: 'domcontentloaded', 
+                        timeout: 20000 
+                    });
+                    await page.waitForTimeout(2000);
+                    
+                    this.addDebugLog('Main portal visited, checking session state');
+                    
+                    // Check if we're properly logged in
+                    const sessionCheck = await page.evaluate(() => {
+                        const url = window.location.href;
+                        const hasLogin = url.includes('login') || url.includes('authentication');
+                        const bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+                        const hasLoginText = bodyText.includes('sign in') || bodyText.includes('log in');
+                        
+                        return {
+                            url,
+                            hasLogin,
+                            hasLoginText,
+                            isLoggedIn: !hasLogin && !hasLoginText
+                        };
+                    });
+                    
+                    this.addDebugLog('Session state check', sessionCheck);
+                    
+                    if (!sessionCheck.isLoggedIn) {
+                        this.addDebugLog('Session context not established, may affect order page access');
+                    }
+                    
+                } catch (contextError) {
+                    this.addDebugLog('Failed to establish session context', { error: contextError.message });
+                }
             }
             
             this.addDebugLog('Navigating to debug URL', { url });
             
-            // Navigate to URL with better error handling
-            try {
-                const response = await page.goto(url, { 
-                    waitUntil: 'domcontentloaded', 
-                    timeout: 25000 
-                });
-                
-                this.addDebugLog('Page navigation completed', { 
-                    status: response ? response.status() : 'unknown',
-                    url: page.url()
-                });
-                
-                // Check if we got redirected to login or region selection
-                const currentUrl = page.url();
-                if (currentUrl.includes('login') || currentUrl.includes('authentication')) {
-                    this.addDebugLog('Redirected to login - session may be expired', { 
-                        originalUrl: url,
-                        redirectedUrl: currentUrl 
-                    });
-                    
-                    // Try to handle region selection if present
-                    const regionUSA = await page.$('text=United States');
-                    if (regionUSA) {
-                        this.addDebugLog('Found region selection, clicking United States');
-                        await regionUSA.click();
-                        await page.waitForTimeout(2000);
-                        
-                        // Try to navigate to original URL again
-                        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-                        this.addDebugLog('Retried navigation after region selection', { url: page.url() });
-                    }
-                }
-                
-                // Check if we're on a "Not Found" page
-                const pageTitle = await page.title();
-                if (pageTitle.includes('Not Found')) {
-                    this.addDebugLog('Page not found - URL may be invalid or session expired', {
-                        url: page.url(),
-                        title: pageTitle
-                    });
-                }
-                
-            } catch (navigationError) {
-                this.addDebugLog('Navigation error', { 
-                    error: navigationError.message,
-                    url: url
-                });
-                
-                // Try to get current page info even if navigation failed
-                try {
-                    const currentUrl = await page.url();
-                    const pageTitle = await page.title();
-                    this.addDebugLog('Page state after navigation error', {
-                        currentUrl,
-                        pageTitle
-                    });
-                } catch (stateError) {
-                    this.addDebugLog('Could not get page state', { error: stateError.message });
-                }
-                
-                await browser.close();
-                throw navigationError;
-            }
-            
-            // Wait for page to load
-            this.addDebugLog('Waiting for page to stabilize');
+            // Navigate to target URL
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(3000);
             
-            // Get basic page info first
+            // Get basic page information
             this.addDebugLog('Getting basic page information');
-            const basicPageInfo = await page.evaluate(() => {
+            const basicInfo = await page.evaluate(() => {
                 return {
                     url: window.location.href,
                     title: document.title,
@@ -1408,9 +1246,13 @@ class CleanDebugScraper {
                 };
             });
             
-            this.addDebugLog('Basic page info retrieved', basicPageInfo);
+            this.addDebugLog('Basic page info retrieved', basicInfo);
             
-            // Analyze page structure
+            // Wait for any dynamic content to load
+            this.addDebugLog('Waiting for page to stabilize');
+            await page.waitForTimeout(3000);
+            
+            // Enhanced page analysis for order pages
             this.addDebugLog('Starting page structure analysis');
             const pageAnalysis = await page.evaluate(() => {
                 const url = window.location.href;
@@ -1425,23 +1267,23 @@ class CleanDebugScraper {
                     images: document.querySelectorAll('img').length,
                     links: document.querySelectorAll('a').length,
                     forms: document.querySelectorAll('form').length,
-                    grids: document.querySelectorAll('[class*="grid"]').length
+                    grids: document.querySelectorAll('[class*="grid"], table').length
                 };
                 
-                // Look for ASICS-specific elements
+                // Look for ASICS B2B specific elements
                 const asicsElements = {
-                    colorElements: document.querySelectorAll('li div.flex.items-center.gap-2').length,
-                    sizeElements: document.querySelectorAll('.bg-primary.text-white').length,
-                    quantityRows: document.querySelectorAll('.grid.grid-flow-col.items-center').length
+                    colorElements: document.querySelectorAll('[class*="color"], [data-color]').length,
+                    sizeElements: document.querySelectorAll('[class*="size"], [data-size]').length,
+                    quantityRows: document.querySelectorAll('tr, [class*="quantity"]').length
                 };
                 
-                // Look for any text that might contain color codes or quantities
+                // Look for inventory-related text patterns
                 const textPatterns = {
-                    colorCodes: (bodyText.match(/\b\d{3}\b/g) || []).slice(0, 10),
-                    quantities: (bodyText.match(/\b\d+\+?\b/g) || []).slice(0, 20),
+                    colorCodes: (bodyText.match(/color[:\s]*[A-Z0-9]{3,}/gi) || []).slice(0, 5),
+                    quantities: (bodyText.match(/\d+\s*(qty|quantity|available|stock|units)/gi) || []).slice(0, 5),
                     hasOrderText: bodyText.toLowerCase().includes('order'),
                     hasProductText: bodyText.toLowerCase().includes('product'),
-                    hasInventoryText: bodyText.toLowerCase().includes('inventory')
+                    hasInventoryText: bodyText.toLowerCase().includes('inventory') || bodyText.toLowerCase().includes('available')
                 };
                 
                 return {
@@ -1463,8 +1305,17 @@ class CleanDebugScraper {
             const products = await this.extractProductsWithDebugging(page);
             this.addDebugLog('Product extraction completed', { productCount: products.length });
             
-            await browser.close();
+            // Get extraction debug info
+            const extractionDebug = await page.evaluate(() => {
+                return window.extractionDebugInfo || [];
+            });
+            
+            if (extractionDebug.length > 0) {
+                this.addDebugLog('Product extraction debug info', { debugMessages: extractionDebug });
+            }
+            
             this.addDebugLog('Browser closed successfully');
+            await browser.close();
             
             this.addDebugLog('Debug single page completed', { 
                 productCount: products.length,
@@ -1475,15 +1326,12 @@ class CleanDebugScraper {
             return {
                 url: pageAnalysis.url,
                 products,
-                analysis: pageAnalysis
+                analysis: pageAnalysis,
+                extractionDebug
             };
             
         } catch (error) {
-            this.addDebugLog('Debug single page error', { 
-                url, 
-                error: error.message, 
-                stack: error.stack 
-            });
+            this.addDebugLog('Debug single page error', { url, error: error.message });
             throw error;
         }
     }
@@ -1493,228 +1341,262 @@ class CleanDebugScraper {
             const products = [];
             const debugInfo = [];
             
-            // ASICS B2B specific extraction logic
-            debugInfo.push('Starting ASICS B2B inventory extraction...');
+            // Enhanced selectors specifically for ASICS B2B order pages
+            const productSelectors = [
+                '.product-item',
+                '.product-card',
+                '.product-tile',
+                '.product',
+                '[data-product-id]',
+                '[data-product]',
+                '.grid-item',
+                '.item',
+                '[class*="product"]',
+                // ASICS B2B specific selectors
+                '.order-item',
+                '.inventory-item',
+                '[class*="order"]',
+                '[class*="inventory"]',
+                'tr[data-product]',
+                'tbody tr',
+                '.product-row'
+            ];
             
-            // Get product info from page
-            const productInfo = {
-                productName: 'Unknown Product',
-                styleId: 'Unknown'
-            };
+            const nameSelectors = [
+                '.product-name',
+                '.product-title',
+                '.name',
+                '.title',
+                'h1', 'h2', 'h3', 'h4',
+                '[class*="name"]',
+                '[class*="title"]',
+                // ASICS specific
+                '.item-name',
+                '.model-name',
+                '[data-product-name]'
+            ];
             
-            // Try to find product name
-            const productNameSelectors = ['h1', '[data-testid="product-name"]', '.product-name', '.product-title'];
-            for (let selector of productNameSelectors) {
-                const element = document.querySelector(selector);
-                if (element && element.textContent.trim()) {
-                    productInfo.productName = element.textContent.trim();
-                    debugInfo.push('Found product name: ' + productInfo.productName);
+            const priceSelectors = [
+                '.price',
+                '.product-price',
+                '.cost',
+                '.amount',
+                '.msrp',
+                '[class*="price"]',
+                '[class*="cost"]',
+                // ASICS specific
+                '.unit-price',
+                '.wholesale-price',
+                '[data-price]'
+            ];
+            
+            const skuSelectors = [
+                '.sku',
+                '.product-id',
+                '.style-number',
+                '[data-sku]',
+                '[data-product-id]',
+                '[class*="sku"]',
+                // ASICS specific
+                '.model-number',
+                '.style-code',
+                '[data-model]'
+            ];
+            
+            // Inventory-specific selectors
+            const quantitySelectors = [
+                '.quantity',
+                '.stock',
+                '.available',
+                '.inventory',
+                '[class*="quantity"]',
+                '[class*="stock"]',
+                '[class*="available"]',
+                '[data-quantity]',
+                'input[type="number"]'
+            ];
+            
+            const colorSelectors = [
+                '.color',
+                '.colorway',
+                '[class*="color"]',
+                '[data-color]',
+                '.variant'
+            ];
+            
+            const sizeSelectors = [
+                '.size',
+                '[class*="size"]',
+                '[data-size]',
+                '.dimension'
+            ];
+            
+            // Try each product selector
+            let productElements = [];
+            for (const selector of productSelectors) {
+                const elements = document.querySelectorAll(selector);
+                debugInfo.push('Selector "' + selector + '": ' + elements.length + ' elements');
+                if (elements.length > 0 && productElements.length === 0) {
+                    productElements = Array.from(elements);
+                    debugInfo.push('Using selector: ' + selector);
                     break;
                 }
             }
             
-            // Extract style ID from URL
-            const urlMatch = window.location.href.match(/\/([0-9A-Z]+)(?:\?|$)/);
-            if (urlMatch) {
-                productInfo.styleId = urlMatch[1];
-                debugInfo.push('Found style ID from URL: ' + productInfo.styleId);
+            debugInfo.push('Total product elements found: ' + productElements.length);
+            
+            // If no product containers found, try to extract from the entire page
+            if (productElements.length === 0) {
+                debugInfo.push('No product containers found, analyzing entire page');
+                
+                // Look for inventory tables or forms
+                const tables = document.querySelectorAll('table');
+                const forms = document.querySelectorAll('form');
+                
+                debugInfo.push('Tables found: ' + tables.length);
+                debugInfo.push('Forms found: ' + forms.length);
+                
+                // Try to extract from table rows
+                const rows = document.querySelectorAll('tr');
+                if (rows.length > 1) {
+                    productElements = Array.from(rows).slice(1); // Skip header row
+                    debugInfo.push('Using table rows: ' + productElements.length);
+                }
             }
             
-            // Look for ASICS color information 
-            const colors = [];
-            const colorElements = document.querySelectorAll('li div.flex.items-center.gap-2');
-            debugInfo.push('Found color elements: ' + colorElements.length);
-            
-            colorElements.forEach(el => {
-                const spans = el.querySelectorAll('span');
-                if (spans.length >= 3) {
-                    const code = spans[0].textContent.trim();
-                    const separator = spans[1].textContent.trim();
-                    const name = spans[2].textContent.trim();
+            // Extract data from each product element
+            productElements.forEach((element, index) => {
+                try {
+                    let name = '';
+                    let price = '';
+                    let sku = '';
+                    let quantity = '';
+                    let color = '';
+                    let size = '';
                     
-                    if (code.match(/^\d{3}$/) && separator === '-') {
-                        colors.push({ code, name });
-                        debugInfo.push('Found color: ' + code + ' - ' + name);
-                    }
-                }
-            });
-            
-            // Fallback: look for color patterns in text
-            if (colors.length === 0) {
-                debugInfo.push('No colors found with primary method, trying fallback...');
-                const allElements = document.querySelectorAll('*');
-                const seenCodes = new Set();
-                
-                allElements.forEach(el => {
-                    const text = el.textContent.trim();
-                    const colorMatch = text.match(/^(\d{3})\s*-\s*([A-Z\/\s]+)$/);
-                    if (colorMatch && !seenCodes.has(colorMatch[1])) {
-                        seenCodes.add(colorMatch[1]);
-                        colors.push({
-                            code: colorMatch[1],
-                            name: colorMatch[2].trim()
-                        });
-                        debugInfo.push('Found color (fallback): ' + colorMatch[1] + ' - ' + colorMatch[2]);
-                    }
-                });
-            }
-            
-            // Look for size headers
-            const sizes = [];
-            const sizeElements = document.querySelectorAll('.bg-primary.text-white');
-            debugInfo.push('Found size header elements: ' + sizeElements.length);
-            
-            sizeElements.forEach(el => {
-                const sizeText = el.textContent.trim();
-                if (sizeText.match(/^\d+\.?\d*$/)) {
-                    sizes.push(sizeText);
-                    debugInfo.push('Found size: ' + sizeText);
-                }
-            });
-            
-            // Default sizes if none found
-            if (sizes.length === 0) {
-                sizes.push(...['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '12.5', '13', '14', '15']);
-                debugInfo.push('Using default size range: ' + sizes.length + ' sizes');
-            }
-            
-            // Look for quantity matrix
-            const quantityMatrix = [];
-            const quantityRows = document.querySelectorAll('.grid.grid-flow-col.items-center');
-            debugInfo.push('Found quantity row elements: ' + quantityRows.length);
-            
-            quantityRows.forEach((row, index) => {
-                const quantities = [];
-                const cells = row.querySelectorAll('.flex.items-center.justify-center span');
-                debugInfo.push('Row ' + index + ' has ' + cells.length + ' cells');
-                
-                cells.forEach(cell => {
-                    const text = cell.textContent.trim();
-                    if (text.match(/^\d+\+?$/) || text === '0' || text === '0+') {
-                        quantities.push(text);
-                    }
-                });
-                
-                debugInfo.push('Row ' + index + ' quantities: ' + JSON.stringify(quantities));
-                
-                if (quantities.length > 0) {
-                    quantityMatrix.push(quantities);
-                }
-            });
-            
-            // Alternative quantity detection if no matrix found
-            if (quantityMatrix.length === 0) {
-                debugInfo.push('No quantity matrix found, trying alternative approach...');
-                
-                const potentialQuantityElements = document.querySelectorAll('span, div');
-                const quantityPattern = /^(\d+\+?|0\+?)$/;
-                const foundQuantities = [];
-                
-                potentialQuantityElements.forEach(el => {
-                    const text = el.textContent.trim();
-                    if (quantityPattern.test(text)) {
-                        const rect = el.getBoundingClientRect();
-                        foundQuantities.push({
-                            text,
-                            x: rect.left,
-                            y: rect.top
-                        });
-                    }
-                });
-                
-                debugInfo.push('Found potential quantities: ' + foundQuantities.map(q => q.text).join(', '));
-                
-                // Group by Y coordinate (rows)
-                foundQuantities.sort((a, b) => a.y - b.y);
-                
-                let currentRow = [];
-                let lastY = -1;
-                const tolerance = 10;
-                
-                foundQuantities.forEach(q => {
-                    if (lastY === -1 || Math.abs(q.y - lastY) < tolerance) {
-                        currentRow.push(q.text);
-                        lastY = q.y;
-                    } else {
-                        if (currentRow.length > 5) {
-                            quantityMatrix.push([...currentRow]);
+                    // Try to find name
+                    for (const selector of nameSelectors) {
+                        const nameEl = element.querySelector(selector);
+                        if (nameEl && nameEl.textContent?.trim()) {
+                            name = nameEl.textContent.trim();
+                            break;
                         }
-                        currentRow = [q.text];
-                        lastY = q.y;
                     }
-                });
-                
-                if (currentRow.length > 5) {
-                    quantityMatrix.push(currentRow);
-                }
-            }
-            
-            debugInfo.push('Final quantity matrix: ' + quantityMatrix.length + ' rows');
-            
-            // Create inventory records
-            if (colors.length > 0 && sizes.length > 0) {
-                colors.forEach((color, colorIndex) => {
-                    const colorQuantities = quantityMatrix[colorIndex] || [];
                     
-                    sizes.forEach((size, sizeIndex) => {
-                        const rawQuantity = colorQuantities[sizeIndex] || '0';
-                        let quantity = 0;
-                        
-                        // Parse quantity
-                        if (rawQuantity && rawQuantity !== '-' && rawQuantity !== '') {
-                            if (rawQuantity.includes('+')) {
-                                const num = parseInt(rawQuantity.replace('+', ''));
-                                quantity = isNaN(num) ? 0 : num;
-                            } else {
-                                const num = parseInt(rawQuantity);
-                                quantity = isNaN(num) ? 0 : num;
+                    // Try to find price
+                    for (const selector of priceSelectors) {
+                        const priceEl = element.querySelector(selector);
+                        if (priceEl && priceEl.textContent?.trim()) {
+                            price = priceEl.textContent.trim();
+                            break;
+                        }
+                    }
+                    
+                    // Try to find SKU
+                    for (const selector of skuSelectors) {
+                        const skuEl = element.querySelector(selector);
+                        if (skuEl && skuEl.textContent?.trim()) {
+                            sku = skuEl.textContent.trim();
+                            break;
+                        } else if (skuEl && skuEl.getAttribute && skuEl.getAttribute('data-sku')) {
+                            sku = skuEl.getAttribute('data-sku');
+                            break;
+                        }
+                    }
+                    
+                    // Try to find quantity/inventory
+                    for (const selector of quantitySelectors) {
+                        const qtyEl = element.querySelector(selector);
+                        if (qtyEl) {
+                            if (qtyEl.value) {
+                                quantity = qtyEl.value;
+                            } else if (qtyEl.textContent?.trim()) {
+                                quantity = qtyEl.textContent.trim();
                             }
+                            if (quantity) break;
                         }
-                        
+                    }
+                    
+                    // Try to find color
+                    for (const selector of colorSelectors) {
+                        const colorEl = element.querySelector(selector);
+                        if (colorEl && colorEl.textContent?.trim()) {
+                            color = colorEl.textContent.trim();
+                            break;
+                        }
+                    }
+                    
+                    // Try to find size
+                    for (const selector of sizeSelectors) {
+                        const sizeEl = element.querySelector(selector);
+                        if (sizeEl && sizeEl.textContent?.trim()) {
+                            size = sizeEl.textContent.trim();
+                            break;
+                        }
+                    }
+                    
+                    // Get additional data
+                    const imageUrl = element.querySelector('img')?.src || '';
+                    const link = element.querySelector('a')?.href || '';
+                    
+                    // Extract any text that might contain inventory info
+                    const fullText = element.textContent || '';
+                    const inventoryKeywords = ['available', 'stock', 'inventory', 'qty', 'quantity', 'units'];
+                    const hasInventoryText = inventoryKeywords.some(keyword => 
+                        fullText.toLowerCase().includes(keyword)
+                    );
+                    
+                    if (name || sku || price || quantity || hasInventoryText) {
                         products.push({
-                            name: productInfo.productName,
-                            sku: productInfo.styleId + '-' + color.code + '-' + size,
-                            price: 'See B2B portal for pricing',
-                            productName: productInfo.productName,
-                            styleId: productInfo.styleId,
-                            colorCode: color.code,
-                            colorName: color.name,
-                            sizeUS: size,
-                            quantity: quantity,
-                            rawQuantity: rawQuantity,
-                            imageUrl: '',
-                            link: window.location.href,
+                            name: name || 'Product ' + (index + 1),
+                            price: price || 'Price not available',
+                            sku: sku || 'product-' + index,
+                            quantity: quantity || 'Quantity not found',
+                            color: color || '',
+                            size: size || '',
+                            imageUrl,
+                            link,
+                            inventoryData: hasInventoryText ? fullText.slice(0, 200) : '',
                             extractedAt: new Date().toISOString()
                         });
-                    });
-                });
+                        
+                        debugInfo.push('Product ' + (index + 1) + ': name="' + name + '" sku="' + sku + '" price="' + price + '" qty="' + quantity + '"');
+                    }
+                } catch (productError) {
+                    debugInfo.push('Error processing product ' + index + ': ' + productError.message);
+                }
+            });
+            
+            // If still no products found, try page-level extraction with inventory focus
+            if (products.length === 0) {
+                debugInfo.push('No products found with standard selectors, trying page-level inventory extraction');
                 
-                debugInfo.push('Created ' + products.length + ' inventory records');
-            } else {
-                debugInfo.push('Insufficient data - Colors: ' + colors.length + ', Sizes: ' + sizes.length);
+                const pageTitle = document.title;
+                const bodyText = document.body ? document.body.innerText : '';
+                const url = window.location.href;
                 
-                // Fallback: create a basic product record
-                if (productInfo.productName !== 'Unknown Product') {
+                // Extract SKU from URL if present
+                const skuMatch = url.match(/\/products\/([A-Z0-9]+)/i);
+                const colorMatch = url.match(/colorCode=([^&]+)/i);
+                
+                if (skuMatch || pageTitle.includes('Product') || bodyText.includes('inventory')) {
                     products.push({
-                        name: productInfo.productName,
-                        sku: productInfo.styleId,
-                        price: 'See B2B portal for pricing',
-                        productName: productInfo.productName,
-                        styleId: productInfo.styleId,
-                        colorCode: 'N/A',
-                        colorName: 'N/A',
-                        sizeUS: 'N/A',
-                        quantity: 0,
-                        rawQuantity: 'N/A',
+                        name: pageTitle || 'Order Page Product',
+                        price: 'See order details',
+                        sku: skuMatch ? skuMatch[1] : 'extracted-from-url',
+                        quantity: 'Check page for inventory',
+                        color: colorMatch ? colorMatch[1] : '',
+                        size: '',
                         imageUrl: '',
-                        link: window.location.href,
+                        link: url,
+                        inventoryData: bodyText.slice(0, 500),
                         extractedAt: new Date().toISOString()
                     });
-                    debugInfo.push('Created fallback product record');
+                    debugInfo.push('Added page-level product with URL extraction');
                 }
             }
             
-            // Store debug info globally
+            // Store debug info in global for access
             window.extractionDebugInfo = debugInfo;
             
             return products;
